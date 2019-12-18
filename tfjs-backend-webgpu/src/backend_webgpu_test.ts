@@ -258,4 +258,112 @@ describeWebGPU('backend webgpu', () => {
 
     expect(f).not.toThrow();
   });
+
+  fit('x=[2,2,1] f=[2,2,1,1] s=1 d=1 p=0', async () => {
+    const inputDepth = 1;
+    const inputShape: [number, number, number] = [2, 2, inputDepth];
+    const outputDepth = 1;
+    const fSize = 2;
+    const pad = 'same';
+    const stride = 1;
+    const dataFormat = 'NHWC';
+    const dilation = 1;
+
+    const x = tf.tensor3d([1, 2, 3, 4], inputShape);
+    const w =
+        tf.tensor4d([3, 1, 5, 0], [fSize, fSize, inputDepth, outputDepth]);
+
+    const result = tf.conv2d(x, w, stride, pad, dataFormat, dilation);
+
+    const resultData = await result.data();
+    console.log(resultData);
+    // expect(result.shape).toEqual([2, 2, 1]);
+    // expectArraysClose(resultData, new Float32Array([20, 26, 13, 12]));
+  });
+
+  fit('x=[3,3,2] f=[2,2,1,1] s=1 d=1 p=valid', async () => {
+    const pad = 'valid';
+    const stride = 1;
+
+    const x = tf.tensor3d(
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 30, 40, 50, 60, 70, 80, 90],
+        [3, 3, 2]);
+    const w = tf.tensor4d([.1, .2, .3, .4, .5, .6, .7, .8], [2, 2, 2, 1]);
+
+    const result = tf.conv2d(x, w, stride, pad);
+
+    const resultData = await result.data();
+    console.log(resultData);
+    //expect(result.shape).toEqual([2, 2, 1]);
+    //expectArraysClose(resultData, new Float32Array([25.6, 53.5, 157.0, 220.9]));
+  });
+
+  // async function time(
+  //     doRep: (r: number) => tf.Tensor[] | tf.Tensor,
+  //     endTrial?: () => Promise<void>, disposeAfterEachTrial = false,
+  //     trials = 50, reps = 1) {
+  //   const times = [];
+
+  //   let toDispose: tf.Tensor[] = [];
+  //   const dispose = () => {
+  //     for (const t of toDispose) {
+  //       t.dispose();
+  //     }
+  //     toDispose = [];
+  //   };
+
+  //   const trial = async () => {
+  //     let result;
+  //     for (let r = 0; r < reps; ++r) {
+  //       result = doRep(r);
+
+  //       toDispose = toDispose.concat(Array.isArray(result) ? result :
+  //       [result]);
+  //     }
+
+  //     if (endTrial != null) {
+  //       await endTrial();
+  //     } else {
+  //       await (Array.isArray(result) ? result[0] : result).data();
+  //     }
+  //   };
+
+  //   // Warm-up. Specifically, this pre-allocates enough memory for an entire
+  //   // trial, ensuring that no allocations happen when timing a trial (if the
+  //   // backend reuses allocations).
+  //   await trial();
+  //   dispose();
+
+  //   for (let t = 0; t < trials; ++t) {
+  //     const start = tf.util.now();
+  //     await trial();
+  //     times.push(tf.util.now() - start);
+  //     if (disposeAfterEachTrial) {
+  //       dispose();
+  //     }
+  //   }
+
+  //   const mean = times.reduce((a, b) => a + b, 0) / trials;
+  //   const min = Math.min(...times);
+  //   const fmt = (n: number) => n.toFixed(3);
+  //   console.log(`Mean time: ${fmt(mean)} ms -> ${fmt(mean / reps)} / rep`);
+  //   console.log(`Min time: ${fmt(min)} ms -> ${fmt(min / reps)} / rep`);
+  // }
+
+  // fit('conv2d', async () => {
+  //   const a = tf.randomNormal<tf.Rank.R4>([1, 128, 128, 4]);
+  //   const b = tf.randomNormal<tf.Rank.R4>([25, 25, 4, 4]);
+
+  // const result = tf.conv2d(a, b, 1, 'same');
+  // const data = await result.data();
+  // console.log(data);
+  //   await time(() => tf.conv2d(a, b, 1, 'same'));
+  // });
+
+  // it('conv2d', async () => {
+  //   const a = tf.randomNormal<tf.Rank.R4>([1, 263, 263, 3]);
+  //   const b = tf.randomNormal<tf.Rank.R4>([7, 7, 3, 64]);
+
+  //   await time(() => tf.conv2d(a, b, 1, 'same'));
+  // });
 });

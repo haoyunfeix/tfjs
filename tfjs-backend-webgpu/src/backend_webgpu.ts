@@ -32,6 +32,7 @@ import {Conv2DMMProgram} from './kernels/conv2d_mm_webgpu';
 import {Conv2DNaiveProgram} from './kernels/conv2d_naive_webgpu';
 import {DepthwiseConv2DProgram} from './kernels/depthwise_conv2d_webgpu';
 import {FillProgram} from './kernels/fill_webgpu';
+import {Im2ColProgram} from './kernels/im2col_webgpu';
 import {MatMulPackedProgram} from './kernels/matmul_packed_webgpu';
 import {MatMulProgram} from './kernels/matmul_webgpu';
 import {MaxPoolProgram} from './kernels/maxpool_webgpu';
@@ -653,6 +654,40 @@ export class WebGPUBackend extends KernelBackend {
             transposeB),
         convInfo.outShape);
   }
+  private conv2dWithIm2Col(
+      x: Tensor4D, filter: Tensor4D,
+      convInfo: backend_util.Conv2DInfo): Tensor4D {
+    const {
+      filterWidth,
+      filterHeight,
+      inChannels,
+      outWidth,
+      outHeight,
+      dataFormat
+    } = convInfo;
+
+    const sharedDim = filterWidth * filterHeight * inChannels;
+    const numCols = outHeight * outWidth;
+    const x2ColShape = [numCols, sharedDim];
+
+    const xSqueezed = x.squeeze([0]);
+    const w2Row = filter.reshape([1, sharedDim, -1]);
+
+    const im2ColProgram =
+        new Im2ColProgram([x2ColShape[1], x2ColShape[0]], xSqueezed.shape, convInfo);
+    const im2Col = this.compileAndRun(im2ColProgram, [xSqueezed]) as Tensor;
+    const im2ColT = im2Col.transpose().reshape([1, x2ColShape[0], x2ColShape[1]]);
+
+    const matMulProgram = new MatMulPackedProgram(
+        [1, x2ColShape[0], x2ColShape[1]],[1, numCols, convInfo.outChannels],
+        env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number);
+    const result: Tensor = this.compileAndRun(matMulProgram, [im2ColT, w2Row]);
+    const isChannelsLast = dataFormat === 'channelsLast';
+    if (isChannelsLast) {
+      return result.reshape([1, outHeight, outWidth, convInfo.outChannels]);
+    }
+    return result.reshape([1, convInfo.outChannels, outHeight, outWidth]);
+  }
 
   conv2d(x: Tensor4D, filter: Tensor4D, convInfo: backend_util.Conv2DInfo):
       Tensor4D {
@@ -667,6 +702,10 @@ export class WebGPUBackend extends KernelBackend {
     const dataId = this.write(null /*values*/, convInfo.outShape, x.dtype);
     const output =
         engine().makeTensorFromDataId(dataId, convInfo.outShape, x.dtype, this);
+    if (x.shape[0] === 1) {
+      return this.conv2dWithIm2Col(x, filter, convInfo);
+    }
+
     let program: Conv2DMMProgram|Conv2DNaiveProgram;
 
     const workPerThread = env().get('WEBGPU_CONV2D_WORK_PER_THREAD') as number;
