@@ -60,7 +60,7 @@ for (let i in list) {
               tileInner <= 4 * getLcm(workGroupSize.x, workGroupSize.y); 
               tileInner += getLcm(workGroupSize.x, workGroupSize.y)) {
             let physicalThreads = 56;
-            let SLM = 48;
+            let SLM = 32;
             let tileAOuter = workPerThread.y * workGroupSize.y;
             let tileBOuter = workPerThread.x * workGroupSize.x;
   
