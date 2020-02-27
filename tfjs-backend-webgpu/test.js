@@ -1,9 +1,9 @@
 let list = [
-  [64, 1024],
+  //[64, 1024],
   //[64, 2048],
   //[64, 2048],
   //[64, 512],
-  //[64, 17],
+  [64, 17],
   //[64, 32],
   //[64, 34],
   //[64, 512],
@@ -67,10 +67,11 @@ for (let i in list) {
             let groupUseMemory = 32 * (tileAOuter + tileBOuter) * tileInner / 1024 / 8;
             let memoryAvailableSet = Math.floor(SLM/groupUseMemory);
   
-            let groupUseThreads = workGroupSize.x * workGroupSize.y / 16;
+            let groupUseThreads = Math.ceil(workGroupSize.x * workGroupSize.y / 16);
             let threadAvilableSet = Math.floor(physicalThreads / groupUseThreads);
   
             let dispatch = Math.ceil(list[i][0] * list[i][1] / workPerThread.x / workPerThread.y / workGroupSize.x / workGroupSize.y);
+            if (dispatch > 32) continue;
             let executionSet = Math.min(memoryAvailableSet, threadAvilableSet, dispatch);
             let threadOccupancy = executionSet * groupUseThreads / physicalThreads;
             let memoryOccupancy = executionSet * groupUseMemory / SLM;
