@@ -86,26 +86,10 @@ describeWebGPU('Ops resnet', () => {
     jsonData['min'] = fmt(min / reps);
     jsonData['numTrials'] = trials;
     jsonData['backend'] = env().getFlags()['WEBGPU_CPU_FORWARD'] !== undefined ? 'webgpu' : 'webgl';
-    //jsonData['name'] = jasmine.getEnv().currentSpec.description;
     data.push(jsonData);
   }
   const nRep = 20;
   const nTrail = 20;
-  //afterEach(function(){
-  //  let jsonData:any = {};
-  //  jsonData['mean'] = 1;
-  //  jsonData['min'] = 2;
-  //  jsonData['backend'] = 'webgpu';
-  //  //jsonData['name'] = jasmine.getEnv().currentSpec.description;
-  //  data.push(jsonData);
-  //});
-  //  var myReporter = {
-  //          specDone: function(result:any) {
-  //              console.log('Spec FullName: ' + result.fullName);
-  //              console.log('Spec Result: ' + result.status);
-  //          },
-  //      }
-  //      jasmine.getEnv().addReporter(myReporter);
 
   function testPad(xShape: Array<number>, pShape: Array<[number, number]>) {
   it(`pad xShape:${xShape} pShape:${pShape}`, async () => {
@@ -130,12 +114,6 @@ describeWebGPU('Ops resnet', () => {
       a.forEach(t => t.dispose());
     };
     await doTest(xShape, pShape);
-    //await doTest([1, 15, 15, 256], [[0, 0], [1, 1], [1, 1], [0, 0]]);
-    //await doTest([1, 29, 29, 128], [[0, 0], [1, 1], [1, 1], [0, 0]]);
-    //await doTest([1, 57, 57, 64], [[0, 0], [1, 1], [1, 1], [0, 0]]);
-    //await doTest([1, 113, 113, 64], [[0, 0], [1, 1], [1, 1], [0, 0]]);
-    //await doTest([1, 225, 225, 3], [[0, 0], [3, 3], [3, 3], [0, 0]]);
-    //await doTest([500, 600, 3], [[50, 50], [0, 0], [0, 0]]);
   });
   }
     testPad([1, 15, 15, 256], [[0, 0], [1, 1], [1, 1], [0, 0]]);
@@ -173,40 +151,6 @@ describeWebGPU('Ops resnet', () => {
       f.forEach(t => t.dispose());
     };
     await doTest(xShape,fShape,stride,pad,format);
-
-    //await doTest([1,8,8,256],[1,1,256,1024],[1,1],'same', 'NHWC');
-    //await doTest([1,8,8,512],[1,1,512,2048],[1,1],'same', 'NHWC');
-    //await doTest([1,8,8,1024],[1,1,1024,2048],[1,1],'same', 'NHWC');
-    //await doTest([1,8,8,1024],[1,1,1024,512],[1,1],'same', 'NHWC');
-    //await doTest([1,8,8,2048],[1,1,2048,17],[1,1],'same', 'NHWC');
-    //await doTest([1,8,8,2048],[1,1,2048,32],[1,1],'same', 'NHWC');
-    //await doTest([1,8,8,2048],[1,1,2048,34],[1,1],'same', 'NHWC');
-    //await doTest([1,8,8,2048],[1,1,2048,512],[1,1],'same', 'NHWC');
-
-    //await doTest([1,15,15,128],[1,1,128,512],[1,1],'same', 'NHWC');
-    //await doTest([1,15,15,256],[1,1,256,1024],[1,1],'same', 'NHWC');
-    //await doTest([1,15,15,512],[1,1,512,256],[1,1],'same', 'NHWC');
-    //await doTest([1,15,15,512],[1,1,512,1024],[1,1],'same', 'NHWC');
-    //await doTest([1,15,15,1024],[1,1,1024,256],[1,1],'same', 'NHWC');
-
-    //await doTest([1,29,29,64],[1,1,64,256],[1,1],'same', 'NHWC');
-    //await doTest([1,29,29,128],[1,1,128,512],[1,1],'same', 'NHWC');
-    //await doTest([1,29,29,256],[1,1,256,128],[1,1],'same', 'NHWC');
-    //await doTest([1,29,29,256],[1,1,256,512],[1,1],'same', 'NHWC');
-    //await doTest([1,29,29,512],[1,1,512,128],[1,1],'same', 'NHWC');
-
-    //await doTest([1,57,57,64],[1,1,64,64],[1,1],'same', 'NHWC');
-    //await doTest([1,57,57,64],[1,1,64,256],[1,1],'same', 'NHWC');
-    //await doTest([1,57,57,256],[1,1,256,64],[1,1],'same', 'NHWC');
-
-    //await doTest([1,8,8,512],[3,3,512,512],[1,1],'same', 'NHWC');
-    //await doTest([1,15,15,256],[3,3,256,256],[1,1],'same', 'NHWC');
-    //await doTest([1,17,17,256],[3,3,256,256],[2,2],'valid', 'NHWC');
-    //await doTest([1,29,29,128],[3,3,128,128],[1,1],'same', 'NHWC');
-    //await doTest([1,31,31,128],[3,3,128,128],[2,2],'valid', 'NHWC');
-    //await doTest([1,57,57,64],[3,3,64,64],[1,1],'same', 'NHWC');
-    //await doTest([1,59,59,64],[3,3,64,64],[2,2],'valid', 'NHWC');
-    //await doTest([1,231,231,3],[7,7,3,64],[2,2],'valid', 'NHWC');
   });
   }
   testConv2d([1,8,8,256],[1,1,256,1024],[1,1],'same', 'NHWC');
@@ -264,21 +208,6 @@ describeWebGPU('Ops resnet', () => {
       a.forEach(t => t.dispose());
     };
     await doTest(xShape);
-    //await doTest([1,15,15,128]);
-    //await doTest([1,15,15,256]);
-    //await doTest([1,15,15,512]);
-    //await doTest([1,15,15,1024]);
-    //await doTest([1,29,29,64]);
-    //await doTest([1,29,29,128]);
-    //await doTest([1,29,29,256]);
-    //await doTest([1,29,29,512]);
-    //await doTest([1,57,57,64]);
-    //await doTest([1,57,57,256]);
-    //await doTest([1,8,8,256]);
-    //await doTest([1,8,8,512]);
-    //await doTest([1,8,8,1024]);
-    //await doTest([1,8,8,2048]);
-    //await doTest([1,113,113,64]);
   });
   }
     testRelu([1,15,15,128]);
@@ -322,32 +251,6 @@ describeWebGPU('Ops resnet', () => {
       b.forEach(t => t.dispose());
     };
     await doTest(aShape, bShape);
-    //await doTest([1,8,8,17],[17]);
-    //await doTest([1,8,8,32],[32]);
-    //await doTest([1,8,8,34],[34]);
-    //await doTest([1,8,8,256],[256]);
-    //await doTest([1,8,8,512],[512]);
-    //await doTest([1,8,8,1024],[1,8,8,1024]);
-    //await doTest([1,8,8,1024],[1024]);
-    //await doTest([1,8,8,2048],[1,8,8,2048]);
-    //await doTest([1,8,8,2048],[2048]);
-    //await doTest([1,15,15,128],[128]);
-    //await doTest([1,15,15,256],[256]);
-    //await doTest([1,15,15,512],[1,15,15,512]);
-    //await doTest([1,15,15,512],[512]);
-    //await doTest([1,15,15,1024],[1,15,15,1024]);
-    //await doTest([1,15,15,1024],[1024]);
-    //await doTest([1,29,29,64],[64]);
-    //await doTest([1,29,29,128],[128]);
-    //await doTest([1,29,29,256],[1,29,29,256]);
-    //await doTest([1,29,29,256],[256]);
-    //await doTest([1,29,29,512],[1,29,29,512]);
-    //await doTest([1,29,29,512],[512]);
-    //await doTest([1,57,57,64],[64]);
-    //await doTest([1,57,57,256],[1,57,57,256]);
-    //await doTest([1,57,57,256],[256]);
-    //await doTest([1,113,13,64],[64]);
-    //await doTest([225,225,3],[3]);
   });
   }
     testAdd([1,8,8,17],[17]);
@@ -401,10 +304,6 @@ describeWebGPU('Ops resnet', () => {
       x.forEach(t => t.dispose());
     };
     await doTest(xShape, filter, stride, pad);
-    //await doTest([1,15,15,1024], [1, 1], [2, 2], 'same');
-    //await doTest([1,29,29,512], [1, 1], [2, 2], 'same');
-    //await doTest([1,57,57,256], [1, 1], [2, 2], 'same');
-    //await doTest([1,115,115,64], [3, 3], [2, 2], 'valid');
   });
   }
     testMaxPool([1,15,15,1024], [1, 1], [2, 2], 'same');
