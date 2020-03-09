@@ -88,8 +88,8 @@ describeWebGPU('Ops resnet', () => {
     jsonData['backend'] = env().getFlags()['WEBGPU_CPU_FORWARD'] !== undefined ? 'webgpu' : 'webgl';
     data.push(jsonData);
   }
-  const nRep = 20;
-  const nTrail = 20;
+  const nRep = 50;
+  const nTrail = 50;
 
   function testPad(xShape: Array<number>, pShape: Array<[number, number]>) {
   it(`pad xShape:${xShape} pShape:${pShape}`, async () => {
