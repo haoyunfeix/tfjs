@@ -29,7 +29,8 @@ export function makeMatMulPackedSource(workPerThread: number[]): string {
     const int ColPerThread = ${workPerThread[0]};
     const int TileAOuter = int(gl_WorkGroupSize.y) * RowPerThread;
     const int TileBOuter = int(gl_WorkGroupSize.x) * ColPerThread;
-    const int TileInner = TileAOuter > TileBOuter ? TileAOuter : TileBOuter;
+    //const int TileInner = TileAOuter > TileBOuter ? TileAOuter : TileBOuter;
+    const int TileInner = 32;
 
     shared float mm_Asub[TileAOuter][TileInner];
     shared float mm_Bsub[TileInner][TileBOuter];
@@ -139,7 +140,8 @@ export class MatMulPackedProgram implements WebGPUProgram {
     this.workPerThread = workPerThread;
     const tileAOuter = this.workGroupSize[1] * workPerThread;
     const tileBOuter = this.workGroupSize[0] * workPerThread;
-    const tileInner = tileAOuter > tileBOuter ? tileAOuter : tileBOuter;
+    //const tileInner = tileAOuter > tileBOuter ? tileAOuter : tileBOuter;
+    const tileInner = 32;
     util.assert(tileInner % this.workGroupSize[0] === 0 &&
                 tileInner % this.workGroupSize[1] === 0,
                 () => 'tileInner must be multiple of workgroupsize.x and workgroupsize.y');
