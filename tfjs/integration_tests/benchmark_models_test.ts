@@ -17,6 +17,7 @@
 
 // import {CoCoSSDBenchmark} from './cocossd_benchmarks';
 import {MobileNetV1GPUBenchmark} from './mobilenet_benchmarks';
+import {ResNet50GPUBenchmark} from './resnet_benchmarks';
 import * as test_util from './test_util';
 import {UniversalSentenceEncoderBenchmark} from './use_benchmarks';
 
@@ -34,6 +35,18 @@ describe('benchmark models', () => {
 
     await test_util.benchmarkAndLog(
         'mobilenet_v1', size => benchmark.run(size), sizes,
+        size => `N=${size}_0_224`, runs);
+  });
+
+  fit('resnet_50', async () => {
+    const sizes = [1];  // MobileNet version
+    const runs = 20;
+
+    const benchmark = new ResNet50GPUBenchmark();
+    await benchmark.loadModel();
+
+    await test_util.benchmarkAndLog(
+        'resnet_50', size => benchmark.run(size), sizes,
         size => `N=${size}_0_224`, runs);
   });
 
