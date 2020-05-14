@@ -25,8 +25,9 @@ export async function benchmark(benchmarkFn: () => tf.Tensor | tf.Tensor[]):
   // Use normal performance.now() timing even though query timers are enabled
   // again because we want to account for more than just GPU time.
   const start = performance.now();
-  const result = benchmarkFn();
-  await (result as tf.Tensor).data();
+  //const result = benchmarkFn();
+  benchmarkFn();
+  //await (result as tf.Tensor).data();
   return performance.now() - start;
 }
 
