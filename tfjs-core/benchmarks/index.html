@@ -68,6 +68,8 @@ limitations under the License.
 
   <script src="./modelConfig.js"></script>
   <script src="./util.js"></script>
+  <script src="./dist/tf-webgpu.js"></script>
+
   <script>
     'use strict';
 
@@ -370,7 +372,7 @@ limitations under the License.
 
       gui.add(state, 'numRuns');
       gui.add(state, 'benchmark', Object.keys(benchmarks));
-      gui.add(state, 'backend', ['wasm', 'webgl', 'cpu']).onChange(backend => {
+      gui.add(state, 'backend', ['wasm', 'webgl', 'cpu','webgpu']).onChange(backend => {
         tf.setBackend(backend);
       });
       gui.add(state, 'kernelTiming', ['aggregate', 'individual']);
