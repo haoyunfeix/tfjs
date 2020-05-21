@@ -68,6 +68,8 @@ limitations under the License.
 
   <script src="./modelConfig.js"></script>
   <script src="./util.js"></script>
+  <script src="./dist/tf-webgpu.js"></script>
+
   <script>
     'use strict';
 
@@ -146,6 +148,7 @@ limitations under the License.
 
     async function warmUpAndRecordTime() {
       await showMsg('Warming up');
+      //_tfengine.ENV.set('DEBUG', true);
       const start = performance.now();
       let res = predict(model);
       if (res instanceof Promise) {
@@ -293,7 +296,7 @@ limitations under the License.
 
     async function profileKernelTime() {
       await showMsg('Profiling kernels');
-      _tfengine.ENV.set('DEBUG', true);
+      //_tfengine.ENV.set('DEBUG', true);
       const oldLog = console.log;
       let kernels = [];
       console.log = msg => {
@@ -345,6 +348,9 @@ limitations under the License.
     }
 
     async function runBenchmark() {
+      console.log(state.backend);
+      await tf.setBackend(state.backend);
+      await tf.ready();
       const benchmark = benchmarks[state.benchmark];
       await setupTable();
       await loadAndRecordTime(benchmark);
@@ -370,7 +376,8 @@ limitations under the License.
 
       gui.add(state, 'numRuns');
       gui.add(state, 'benchmark', Object.keys(benchmarks));
-      gui.add(state, 'backend', ['wasm', 'webgl', 'cpu']).onChange(backend => {
+      gui.add(state, 'backend', ['wasm', 'webgl', 'cpu','webgpu']).onChange(backend => {
+        state.backend = backend;
         tf.setBackend(backend);
       });
       gui.add(state, 'kernelTiming', ['aggregate', 'individual']);

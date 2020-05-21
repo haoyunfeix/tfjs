@@ -158,15 +158,42 @@ const benchmarks = {
       }
     }
   },
-  'posenet': {
+  'posenet_mobileNet': {
     load: async () => {
-      const model = await posenet.load();
+      const mobileNetConfig = {
+        architecture: 'MobileNetV1',
+        outputStride: 16,
+        inputResolution: 513,
+        multiplier: 0.75,
+        quantBytes: 2
+      };
+      const model = await posenet.load(mobileNetConfig);
       model.image = await loadImage('tennis_standing.jpg');
       return model;
     },
     predictFunc: () => {
       return async model => {
         return model.estimateSinglePose(model.image);
+      }
+    }
+  },
+  'posenet_resNet': {
+    load: async () => {
+      const resNetConfig ={
+        architecture: 'ResNet50',
+        outputStride: 32,
+        inputResolution: 513,
+        quantBytes: 4
+      };
+      const model = await posenet.load(resNetConfig);
+      model.image = await loadImage('tennis_standing.jpg');
+      return model;
+    },
+    predictFunc: () => {
+      const zeros = tf.zeros([224, 224, 3]);
+      return async model => {
+        //return model.estimateSinglePose(model.image);
+        return model.estimateSinglePose(zeros);
       }
     }
   },
