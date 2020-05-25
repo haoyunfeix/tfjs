@@ -75,11 +75,11 @@ limitations under the License.
 
     const state = {
       numRuns: 50,
-      benchmark: 'mobilenet_v2',
+      benchmark: 'posenet_resNet_q4_s32_input224',
       run: (v) => {
         runBenchmark();
       },
-      backend: 'wasm',
+      backend: 'webgpu',
       kernelTiming: 'aggregate',
     };
 
@@ -296,7 +296,7 @@ limitations under the License.
 
     async function profileKernelTime() {
       await showMsg('Profiling kernels');
-      //_tfengine.ENV.set('DEBUG', true);
+      _tfengine.ENV.set('DEBUG', true);
       const oldLog = console.log;
       let kernels = [];
       console.log = msg => {
@@ -351,6 +351,7 @@ limitations under the License.
       console.log(state.backend);
       await tf.setBackend(state.backend);
       await tf.ready();
+
       const benchmark = benchmarks[state.benchmark];
       await setupTable();
       await loadAndRecordTime(benchmark);

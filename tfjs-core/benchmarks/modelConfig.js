@@ -72,6 +72,47 @@ const sentences = [
 ];
 
 const benchmarks = {
+  'posenet_resNet_q4_s32_input224': {
+    load: async () => {
+      const resNetConfig ={
+        architecture: 'ResNet50',
+        outputStride: 32,
+        inputResolution: 224,
+        quantBytes: 4,
+        modelUrl: 'savedmodel/posenet/resnet50/float/model-stride32.json'
+      };
+      const model = await posenet.load(resNetConfig);
+      model.image = await loadImage('tennis_standing.jpg');
+      return model;
+    },
+    predictFunc: () => {
+      const zeros = tf.zeros([224, 224, 3]);
+      return async model => {
+        //return model.estimateSinglePose(model.image);
+        return model.estimateSinglePose(zeros);
+      }
+    }
+  },
+  'posenet_mobileNet_q2_m75_s16_input513': {
+    load: async () => {
+      const mobileNetConfig = {
+        architecture: 'MobileNetV1',
+        outputStride: 16,
+        inputResolution: 513,
+        multiplier: 0.75,
+        quantBytes: 2,
+        modeUrl: 'savedmodel/posenet/mobilenet/quant2/075/model-stride16.json'
+      };
+      const model = await posenet.load(mobileNetConfig);
+      model.image = await loadImage('tennis_standing.jpg');
+      return model;
+    },
+    predictFunc: () => {
+      return async model => {
+        return model.estimateSinglePose(model.image);
+      }
+    }
+  },
   'mobilenet_v2': {
     load: async () => {
       const url =
@@ -155,45 +196,6 @@ const benchmarks = {
         const res = await model.embed(next);
         nextIdx += 1;
         return await res.data();
-      }
-    }
-  },
-  'posenet_mobileNet': {
-    load: async () => {
-      const mobileNetConfig = {
-        architecture: 'MobileNetV1',
-        outputStride: 16,
-        inputResolution: 513,
-        multiplier: 0.75,
-        quantBytes: 2
-      };
-      const model = await posenet.load(mobileNetConfig);
-      model.image = await loadImage('tennis_standing.jpg');
-      return model;
-    },
-    predictFunc: () => {
-      return async model => {
-        return model.estimateSinglePose(model.image);
-      }
-    }
-  },
-  'posenet_resNet': {
-    load: async () => {
-      const resNetConfig ={
-        architecture: 'ResNet50',
-        outputStride: 32,
-        inputResolution: 513,
-        quantBytes: 4
-      };
-      const model = await posenet.load(resNetConfig);
-      model.image = await loadImage('tennis_standing.jpg');
-      return model;
-    },
-    predictFunc: () => {
-      const zeros = tf.zeros([224, 224, 3]);
-      return async model => {
-        //return model.estimateSinglePose(model.image);
-        return model.estimateSinglePose(zeros);
       }
     }
   },
