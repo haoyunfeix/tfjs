@@ -98,6 +98,7 @@ limitations under the License.
 
   <script src="./modelConfig.js"></script>
   <script src="./util.js"></script>
+  <script src="./dist/tf-webgpu.js"></script>
   <script src="./benchmark_util.js"></script>
   <script>
     'use strict';
@@ -521,7 +522,7 @@ limitations under the License.
 
       let parameterFolder = gui.addFolder('Parameters');
       parameterFolder.add(state, 'numRuns');
-      parameterFolder.add(state, 'backend', ['wasm', 'webgl', 'cpu']).onChange(backend => {
+      parameterFolder.add(state, 'backend', ['wasm', 'webgl', 'cpu', 'webgpu']).onChange(backend => {
         // TODO: Failed to set backend
         tf.setBackend(backend);
       });
