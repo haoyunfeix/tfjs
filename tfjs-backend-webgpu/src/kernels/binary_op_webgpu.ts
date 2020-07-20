@@ -81,6 +81,7 @@ export class BinaryOpProgram implements WebGPUProgram {
         setOutput(index, binaryOperation(a, b));
       }
       `;
+      this.shaderKey = `binary${op}${type}`;
     } else {
       const type = getCoordsDataType(this.outputShape.length);
 
