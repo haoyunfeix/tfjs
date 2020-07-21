@@ -21,6 +21,7 @@ import {WebGPUProgram} from './webgpu_program';
 export class TransposeSharedProgram implements WebGPUProgram {
   variableNames = ['A'];
   outputShape: number[];
+  shaderKey: string;
   userCode: string;
   dispatchLayout: {x: number[], y: number[]};
   dispatch: [number, number, number];
@@ -62,5 +63,6 @@ export class TransposeSharedProgram implements WebGPUProgram {
         }
       }
     `;
+    this.shaderKey = `transposeShared${newDim}`;
   }
 }

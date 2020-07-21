@@ -104,5 +104,6 @@ export class BinaryOpSharedProgram implements WebGPUProgram {
           }
         }
         `;
+    this.shaderKey = `binaryShared${op}${useSharedMemoryWithB}`;
   }
 }
