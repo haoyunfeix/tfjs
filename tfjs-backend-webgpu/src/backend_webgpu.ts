@@ -103,6 +103,7 @@ export class WebGPUBackend extends KernelBackend {
 
   private commandQueueOwnedIds = new WeakSet<DataId>();
   private binaryCache: {[key: string]: WebGPUBinary};
+  private programCache: {[key: string]: webgpu_program.WebGPUProgram};
   private fromPixels2DContext: CanvasRenderingContext2D;
   private bufferManager: BufferManager;
   private tensorMap: DataStorage<TensorBufferInfo>;
@@ -121,6 +122,7 @@ export class WebGPUBackend extends KernelBackend {
   constructor(device: GPUDevice, glslang: Glslang) {
     super();
     this.binaryCache = {};
+    this.programCache = {};
     this.device = device;
     this.queue = device.defaultQueue;
     this.commandQueue = [];
@@ -338,6 +340,14 @@ export class WebGPUBackend extends KernelBackend {
     this.uploadWaitMs = 0;
     this.downloadWaitMs = 0;
     return res;
+  }
+
+  private getAndSaveProgram(
+      key: string, getProgram: () => webgpu_program.WebGPUProgram) {
+    if (!(key in this.programCache)) {
+      this.programCache[key] = getProgram();
+    }
+    return this.programCache[key];
   }
 
   private getAndSavePipeline(
@@ -566,7 +576,10 @@ export class WebGPUBackend extends KernelBackend {
 
   pad<T extends Tensor>(
       x: T, paddings: Array<[number, number]>, constantValue: number): T {
-    const program = new PadProgram(x.shape, paddings, constantValue);
+    const key = x.shape.join(',') + paddings.join(',') + constantValue;
+    const program = this.getAndSaveProgram(key, () => {
+        return new PadProgram(x.shape, paddings, constantValue);
+    });
     const output = this.makeOutputArray(program.outputShape, x.dtype);
     return this.compileAndRun(program, [x], output);
   }
@@ -593,11 +606,15 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   maxPool(x: Tensor4D, convInfo: backend_util.Conv2DInfo): Tensor4D {
-    let program: Pool2DProgram|MaxPoolWithFilterSizeEqualsOneProgram;
+    let program: Pool2DProgram|MaxPoolWithFilterSizeEqualsOneProgram|
+        webgpu_program.WebGPUProgram;
     if (convInfo.filterHeight === 1 && convInfo.filterWidth === 1) {
       program = new MaxPoolWithFilterSizeEqualsOneProgram(convInfo);
     } else {
-      program = new Pool2DProgram(convInfo, 'max');
+      const key = convInfo.outShape.join(',') + 'max';
+      program = this.getAndSaveProgram(key, () => {
+        return new Pool2DProgram(convInfo, 'max');
+      });
     }
 
     const output = this.makeOutputArray(program.outputShape, x.dtype);
@@ -615,7 +632,10 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private binaryOp(a: Tensor, b: Tensor, op: string): Tensor {
-    const program = binary_op.getBinaryProgram(op, a.shape, b.shape);
+    const key = op + a.shape.join(',') + b.shape.join(',');
+    const program = this.getAndSaveProgram(key, () => {
+      return binary_op.getBinaryProgram(op, a.shape, b.shape);
+    });
     const dtype = backend_util.upcastType(a.dtype, b.dtype);
     const dataId = this.write(null /*values*/, program.outputShape, dtype);
     const output =
@@ -748,14 +768,18 @@ export class WebGPUBackend extends KernelBackend {
     const dataId = this.write(null /*values*/, convInfo.outShape, x.dtype);
     const output =
         engine().makeTensorFromDataId(dataId, convInfo.outShape, x.dtype, this);
-    let program: Conv2DMMProgram|Conv2DNaiveProgram;
+    let program: Conv2DMMProgram|Conv2DNaiveProgram|webgpu_program.WebGPUProgram;
 
     const workPerThread = env().get('WEBGPU_CONV2D_WORK_PER_THREAD') as number;
     if (workPerThread === -1) {
       // TODO(kainino0x): This may be obsolete, but is kept for reference.
       program = new Conv2DNaiveProgram(convInfo);
     } else {
-      program = new Conv2DMMProgram(convInfo, workPerThread);
+      const key = convInfo.outShape.join(',') + convInfo.dataFormat +
+          convInfo.filterHeight + convInfo.filterWidth + convInfo.inChannels;
+      program = this.getAndSaveProgram(key, () => {
+        return new Conv2DMMProgram(convInfo, workPerThread);
+      });
     }
 
     const pad = [convInfo.padInfo.top, convInfo.padInfo.left];
@@ -1022,7 +1046,10 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   relu<T extends Tensor>(x: T): T {
-    const program = new UnaryOpProgram(x.shape, unary_op.RELU);
+    const key = x.shape.join(',') + unary_op.RELU;
+    const program = this.getAndSaveProgram(key, () => {
+      return new UnaryOpProgram(x.shape, unary_op.RELU);
+    });
     return this.compileAndRun(program, [x]);
   }
 
