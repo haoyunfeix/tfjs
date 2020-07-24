@@ -576,7 +576,8 @@ export class WebGPUBackend extends KernelBackend {
 
   pad<T extends Tensor>(
       x: T, paddings: Array<[number, number]>, constantValue: number): T {
-    const key = x.shape.join(',') + paddings.join(',') + constantValue;
+    const key = 'pad' + x.shape.join(',') + '|' + paddings.join(',') + '|'
+        + constantValue;
     const program = this.getAndSaveProgram(key, () => {
         return new PadProgram(x.shape, paddings, constantValue);
     });
@@ -609,9 +610,13 @@ export class WebGPUBackend extends KernelBackend {
     let program: Pool2DProgram|MaxPoolWithFilterSizeEqualsOneProgram|
         webgpu_program.WebGPUProgram;
     if (convInfo.filterHeight === 1 && convInfo.filterWidth === 1) {
-      program = new MaxPoolWithFilterSizeEqualsOneProgram(convInfo);
+      const key = 'maxPoolWithFilterSizeEqualsOne'
+          + convInfo.outShape.join(',');
+      program = this.getAndSaveProgram(key, () => {
+        return new MaxPoolWithFilterSizeEqualsOneProgram(convInfo);
+      });
     } else {
-      const key = convInfo.outShape.join(',') + 'max';
+      const key = 'pool2d' + convInfo.outShape.join(',') + 'max';
       program = this.getAndSaveProgram(key, () => {
         return new Pool2DProgram(convInfo, 'max');
       });
@@ -632,7 +637,7 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private binaryOp(a: Tensor, b: Tensor, op: string): Tensor {
-    const key = op + a.shape.join(',') + b.shape.join(',');
+    const key = op + a.shape.join(',') + '|' +b.shape.join(',');
     const program = this.getAndSaveProgram(key, () => {
       return binary_op.getBinaryProgram(op, a.shape, b.shape);
     });
@@ -708,8 +713,16 @@ export class WebGPUBackend extends KernelBackend {
     const xSqueezed = x.squeeze([0]);
     const w2Row = filter.reshape([1, sharedDim, -1]);
 
-    const im2ColProgram =
-        new Im2ColProgram(x2ColShape, xSqueezed.shape, convInfo);
+    const im2Key = 'Im2Col' + x2ColShape.join(',') + '|'
+        + xSqueezed.shape.join(',') + '|' + convInfo.filterWidth + '|'
+        + convInfo.inChannels + '|' + convInfo.strideWidth + '|'
+        + convInfo.strideHeight + '|' + convInfo.padInfo.left + '|'
+        + convInfo.padInfo.top + '|' + convInfo.outWidth + '|'
+        + convInfo.dilationHeight + '|' + convInfo.dilationWidth + '|'
+        + convInfo.dataFormat;
+    const im2ColProgram = this.getAndSaveProgram(im2Key, () => {
+        return new Im2ColProgram(x2ColShape, xSqueezed.shape, convInfo);
+    });
     const im2Col = this.compileAndRun(im2ColProgram, [xSqueezed]);
     const im2Col3D =
         (im2Col as Tensor3D).reshape([1, x2ColShape[0], x2ColShape[1]]);
@@ -717,10 +730,16 @@ export class WebGPUBackend extends KernelBackend {
     const transposeA = false;
     const transposeB = false;
 
-    const matMulProgram = new MatMulPackedProgram(
+    const matMulKey = 'MatMulPacked' + x2ColShape[0] + '|' + x2ColShape[1]
+        + '|' + numCols + '|' + convInfo.outChannels + '|'
+        + env().get('WEBGPU_MATMUL_WORK_PER_THREAD') + '|' + transposeA
+        + '|' + transposeB;
+    const matMulProgram = this.getAndSaveProgram(matMulKey, () => {
+        return new MatMulPackedProgram(
         [1, x2ColShape[0], x2ColShape[1]], [1, numCols, convInfo.outChannels],
         env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number, transposeA,
         transposeB);
+    }); 
     const result: Tensor = this.compileAndRun(matMulProgram, [im2Col3D, w2Row]);
     const isChannelsLast = dataFormat === 'channelsLast';
     if (isChannelsLast) {
@@ -773,10 +792,14 @@ export class WebGPUBackend extends KernelBackend {
     const workPerThread = env().get('WEBGPU_CONV2D_WORK_PER_THREAD') as number;
     if (workPerThread === -1) {
       // TODO(kainino0x): This may be obsolete, but is kept for reference.
-      program = new Conv2DNaiveProgram(convInfo);
+      const key = 'Conv2DNaive' + convInfo.outShape.join(',') + convInfo.dataFormat;
+      program = this.getAndSaveProgram(key, () => {
+        return new Conv2DNaiveProgram(convInfo);
+      });
     } else {
-      const key = convInfo.outShape.join(',') + convInfo.dataFormat +
-          convInfo.filterHeight + convInfo.filterWidth + convInfo.inChannels;
+      const key = 'Conv2DMM' + convInfo.outShape.join(',') + '|' + convInfo.dataFormat
+          + '|' + convInfo.filterHeight + '|' + convInfo.filterWidth + '|' + convInfo.inChannels
+          + '|' + workPerThread;
       program = this.getAndSaveProgram(key, () => {
         return new Conv2DMMProgram(convInfo, workPerThread);
       });
@@ -1046,7 +1069,7 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   relu<T extends Tensor>(x: T): T {
-    const key = x.shape.join(',') + unary_op.RELU;
+    const key = 'UnaryOp' + x.shape.join(',') + unary_op.RELU;
     const program = this.getAndSaveProgram(key, () => {
       return new UnaryOpProgram(x.shape, unary_op.RELU);
     });
@@ -1214,19 +1237,29 @@ export class WebGPUBackend extends KernelBackend {
     const output = engine().makeTensorFromDataId(
         dataId, [batch, outerShapeA, outerShapeB], a.dtype, this);
 
-    let program: MatMulProgram|MatMulPackedProgram;
+    let program: MatMulProgram|MatMulPackedProgram|webgpu_program.WebGPUProgram;
     // TODO: We should eventually use the blocked version, but keeping around
     // the old version while we try to understand conditions under which blocked
     // is faster.
     if (env().get('WEBGPU_MATMUL_WORK_PER_THREAD') === 0) {
-      program = new MatMulProgram(
+      const key = 'MatMul' + a.shape.join(',') + '|' + output.shape.join(',')
+          + '|' + transposeA + '|' + transposeB;
+      program = this.getAndSaveProgram(key, () => {
+          return new MatMulProgram(
           a.shape, output.shape as [number, number, number], transposeA,
           transposeB);
+          });
     } else {
-      program = new MatMulPackedProgram(
+      const key = 'MatMulPacked' + a.shape.join(',') + '|'
+          + output.shape.join(',') + '|'
+          + env().get('WEBGPU_MATMUL_WORK_PER_THREAD')
+          + '|' + transposeA + '|' + transposeB;
+      program = this.getAndSaveProgram(key, () => {
+          return new MatMulPackedProgram(
           a.shape, output.shape as [number, number, number],
           env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number, transposeA,
           transposeB);
+          });
     }
 
     return this.compileAndRun(program, [a, b], output);
