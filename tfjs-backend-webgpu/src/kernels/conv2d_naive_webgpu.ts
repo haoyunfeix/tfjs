@@ -115,6 +115,6 @@ export class Conv2DNaiveProgram implements WebGPUProgram {
         writeResult(batch, coords[1], coords[2], outChannel, acc);
       }
     `;
-    this.shaderKey = 'conv2dnaive';
+    this.shaderKey = 'Conv2DNaive|' + convInfo.outShape + '|' + convInfo.dataFormat;
   }
 }

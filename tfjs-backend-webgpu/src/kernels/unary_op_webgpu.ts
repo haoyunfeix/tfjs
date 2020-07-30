@@ -95,7 +95,7 @@ export class UnaryOpProgram implements WebGPUProgram {
         }
       }
       `;
-      this.shaderKey = `unary${op}${type}${size}`;
+      this.shaderKey = 'UnaryOp|' + outputShape + '|' + op;
     }
   }
 }

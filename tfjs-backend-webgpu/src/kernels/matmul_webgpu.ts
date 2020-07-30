@@ -140,6 +140,7 @@ export class MatMulProgram implements WebGPUProgram {
         mm_matMul(dimAOuter, dimInner, dimBOuter);
       }
     `;
-    this.shaderKey = `matmul${fitA}${fitB}${transposeA}${transposeB}`;
+    this.shaderKey = 'MatMul|' + aShape+ '|' + outputShape + '|' + transposeA
+        + '|' + transposeB;
   }
 }

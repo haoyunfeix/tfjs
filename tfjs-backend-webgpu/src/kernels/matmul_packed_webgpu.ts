@@ -214,7 +214,7 @@ export class MatMulPackedProgram implements WebGPUProgram {
         mm_matMul(dimAOuter, dimInner, dimBOuter);
       }
     `;
-    this.shaderKey = `matmulpacked${this.workPerThread}${fitA}${fitB}${
-        transposeA}${transposeB}`;
+    this.shaderKey = 'MatMulPacked|' + aShape + '|' + outputShape + '|'
+        + workPerThread + '|' + transposeA + '|' + transposeB;
   }
 }

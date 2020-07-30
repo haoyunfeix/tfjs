@@ -83,6 +83,7 @@ export class PadProgram implements WebGPUProgram {
       }
     `;
     this.shaderKey =
-        `pad${startValue}${endValue}${rank}${size}${type}${constantValue}`;
+        'Pad' + xShape.join(',') + '|' + paddings.join(',') + '|'
+        + constantValue;
   }
 }

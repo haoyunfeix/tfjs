@@ -162,7 +162,8 @@ export class Conv2DMMProgram implements WebGPUProgram {
           mm_matMul(dimAOuter, dimInner, dimBOuter);
         }
       `;
-    this.shaderKey = `conv2dmm'${elementsPerThread.join('')}${fitA}${fitB}${
-        addBiasSnippet}${activationSnippet}`;
+    this.shaderKey = 'Conv2DMM' + convInfo.outShape + '|' + convInfo.dataFormat
+          + '|' + convInfo.filterHeight + '|' + convInfo.filterWidth + '|'
+          + convInfo.inChannels + '|' + convInfo.inShape + '|' + workPerThread;
   }
 }

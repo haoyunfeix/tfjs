@@ -21,6 +21,7 @@ import {computeDispatch, flatDispatchLayout} from '../webgpu_util';
 import {WebGPUProgram} from './webgpu_program';
 
 export class Im2ColProgram implements WebGPUProgram {
+  shaderKey: string;
   variableNames = ['A'];
   outputShape: number[];
   userCode: string;
@@ -92,5 +93,12 @@ export class Im2ColProgram implements WebGPUProgram {
         }
       }
     `;
+    this.shaderKey = 'Im2Col|' + outputShape + '|'
+        + inputShape + '|' + convInfo.filterWidth + '|'
+        + convInfo.inChannels + '|' + convInfo.strideWidth + '|'
+        + convInfo.strideHeight + '|' + convInfo.padInfo.left + '|'
+        + convInfo.padInfo.top + '|' + convInfo.outWidth + '|'
+        + convInfo.dilationHeight + '|' + convInfo.dilationWidth + '|'
+        + convInfo.dataFormat;
   }
 }

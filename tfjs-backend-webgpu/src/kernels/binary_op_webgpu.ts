@@ -61,7 +61,6 @@ export class BinaryOpProgram implements WebGPUProgram {
             setOutput(index, binaryOperation(a, b));
           }
         `;
-      this.shaderKey = `binary2${op}`;
     } else if (sizeFit) {
       const type = getCoordsDataType(this.outputShape.length);
       this.userCode = `
@@ -103,7 +102,7 @@ export class BinaryOpProgram implements WebGPUProgram {
         }
       }
       `;
-      this.shaderKey = `binary${op}${type}${size}`;
     }
+    this.shaderKey = op + '|' + aShape + '|' + bShape;
   }
 }
