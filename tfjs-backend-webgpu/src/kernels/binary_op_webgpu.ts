@@ -24,7 +24,6 @@ import {WebGPUProgram} from './webgpu_program';
 
 export class BinaryOpProgram implements WebGPUProgram {
   outputShape: number[];
-  shaderKey: string;
   userCode: string;
   dispatchLayout: {x: number[]};
   dispatch: [number, number, number];
@@ -103,6 +102,5 @@ export class BinaryOpProgram implements WebGPUProgram {
       }
       `;
     }
-    this.shaderKey = op + '|' + aShape + '|' + bShape;
   }
 }

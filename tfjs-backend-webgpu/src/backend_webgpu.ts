@@ -351,11 +351,11 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private getAndSavePipeline(
-      key: string, getBinary: () => webgpu_program.WebGPUBinary) {
-    if (!(key in this.binaryCache)) {
-      this.binaryCache[key] = getBinary();
+      program: webgpu_program.WebGPUProgram, getBinary: () => webgpu_program.WebGPUBinary) {
+    if (typeof(program.binary) === 'undefined') {
+      program.binary = getBinary();
     }
-    return this.binaryCache[key];
+    return program.binary;
   }
 
   private makeOutputArray<T extends Tensor>(shape: number[], dtype: DataType):
@@ -440,9 +440,7 @@ export class WebGPUBackend extends KernelBackend {
       };
     });
     this.uploadToGPU(output.dataId);
-    const bufferTypes = inputsData.map(d => d.dtype).concat(output.dtype);
-    const key = webgpu_program.makeShaderKey(program, bufferTypes);
-    const {bindGroupLayout, pipeline} = this.getAndSavePipeline(key, () => {
+    const {bindGroupLayout, pipeline} = this.getAndSavePipeline(program, () => {
         return webgpu_program.compileProgram(
             this.glslang, this.device, program, inputsData, output, uniforms);
     });
@@ -681,7 +679,7 @@ export class WebGPUBackend extends KernelBackend {
         [1, x2ColShape[0], x2ColShape[1]], [1, numCols, convInfo.outChannels],
         env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number, transposeA,
         transposeB);
-    }); 
+    });
     const result: Tensor = this.compileAndRun(matMulProgram, [im2Col3D, w2Row]);
     const isChannelsLast = dataFormat === 'channelsLast';
     if (isChannelsLast) {
@@ -739,7 +737,7 @@ export class WebGPUBackend extends KernelBackend {
         return new Conv2DNaiveProgram(convInfo);
       });
     } else {
-      const key = 'Conv2DMM' + convInfo.outShape + '|' + convInfo.dataFormat
+      const key = 'Conv2DMM|' + convInfo.outShape + '|' + convInfo.dataFormat
           + '|' + convInfo.filterHeight + '|' + convInfo.filterWidth
           + '|' + convInfo.inChannels + '|' + convInfo.inShape
           + '|' + workPerThread;
@@ -1193,7 +1191,7 @@ export class WebGPUBackend extends KernelBackend {
           transposeB);
           });
     } else {
-      const key = 'MatMulPacked' + a.shape + '|' + output.shape + '|'
+      const key = 'MatMulPacked|' + a.shape + '|' + output.shape + '|'
           + env().get('WEBGPU_MATMUL_WORK_PER_THREAD')
           + '|' + transposeA + '|' + transposeB;
       program = this.getAndSaveProgram(key, () => {

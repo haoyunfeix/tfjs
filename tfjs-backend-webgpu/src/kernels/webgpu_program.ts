@@ -41,6 +41,7 @@ export interface WebGPUProgram {
   // in a thread group. Individual dimensions determines thread layout within
   // the group.
   workGroupSize?: [number, number, number];
+  binary?: WebGPUBinary;
 }
 
 export interface WebGPUBinary {
