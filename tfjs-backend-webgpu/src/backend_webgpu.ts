@@ -555,11 +555,19 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   maxPool(x: Tensor4D, convInfo: backend_util.Conv2DInfo): Tensor4D {
-    let program: Pool2DProgram|MaxPoolWithFilterSizeEqualsOneProgram;
+    let program: Pool2DProgram|MaxPoolWithFilterSizeEqualsOneProgram|
+        webgpu_program.WebGPUProgram;
     if (convInfo.filterHeight === 1 && convInfo.filterWidth === 1) {
-      program = new MaxPoolWithFilterSizeEqualsOneProgram(convInfo);
+      const key = 'MaxPoolWithFilterSizeEqualsOne|'
+          + convInfo.outShape.join(',');
+      program = this.getAndSaveProgram(key, () => {
+          return new MaxPoolWithFilterSizeEqualsOneProgram(convInfo);
+      });
     } else {
-      program = new Pool2DProgram(convInfo, 'max');
+      const key = 'Pool2D|' + convInfo.outShape.join(',') + '|max';
+      program = this.getAndSaveProgram(key, () => {
+          return new Pool2DProgram(convInfo, 'max');
+      });
     }
 
     const output = this.makeOutputArray(program.outputShape, x.dtype);
@@ -1005,7 +1013,10 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   sigmoid<T extends Tensor>(x: T): T {
-    const program = new UnaryOpProgram(x.shape, unary_op.SIGMOID);
+    const key = 'UnaryOp|' + x.shape.join(',') + '|' + unary_op.RELU;
+    const program = this.getAndSaveProgram(key, () => {
+      return new UnaryOpProgram(x.shape, unary_op.SIGMOID);
+    });
     return this.compileAndRun(program, [x]);
   }
 
@@ -1081,8 +1092,11 @@ export class WebGPUBackend extends KernelBackend {
   resizeBilinear(
       x: Tensor4D, newHeight: number, newWidth: number,
       alignCorners: boolean): Tensor4D {
-    const program =
-        new ResizeBilinearProgram(x.shape, newHeight, newWidth, alignCorners);
+    const key = 'ResizeBilinear|' + x.shape.join(',') + '|'
+        + newHeight + '|' + newWidth + '|' + alignCorners;
+    const program = this.getAndSaveProgram(key, () => {
+        return new ResizeBilinearProgram(x.shape, newHeight, newWidth, alignCorners);
+    });
 
     const output: Tensor4D =
         this.makeOutputArray(program.outputShape, 'float32');
