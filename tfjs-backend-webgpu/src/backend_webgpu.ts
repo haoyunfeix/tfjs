@@ -344,7 +344,7 @@ export class WebGPUBackend extends KernelBackend {
 
   private getAndSaveProgram(
       key: string, getProgram: () => webgpu_program.WebGPUProgram) {
-    if (!(key in this.programCache)) {
+    if (typeof(this.programCache[key]) === 'undefined') {
       this.programCache[key] = getProgram();
     }
     return this.programCache[key];
@@ -525,7 +525,7 @@ export class WebGPUBackend extends KernelBackend {
 
   pad<T extends Tensor>(
       x: T, paddings: Array<[number, number]>, constantValue: number): T {
-    const key = 'Pad|' + x.shape + '|' + paddings + '|' + constantValue;
+    const key = 'Pad|' + x.shape.join(',') + '|' + paddings.join(',') + '|' + constantValue;
     const program = this.getAndSaveProgram(key, () => {
         return new PadProgram(x.shape, paddings, constantValue);
     });
@@ -585,7 +585,7 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private binaryOp(a: Tensor, b: Tensor, op: string): Tensor {
-    const key = op + '|' + a.shape + '|' + b.shape;
+    const key = op + '|' + a.shape.join(',') + '|' + b.shape.join(',');
     const program = this.getAndSaveProgram(key, () => {
       return binary_op.getBinaryProgram(op, a.shape, b.shape);
     });
@@ -661,8 +661,8 @@ export class WebGPUBackend extends KernelBackend {
     const xSqueezed = x.squeeze([0]);
     const w2Row = filter.reshape([1, sharedDim, -1]);
 
-    const im2Key = 'Im2Col|' + x2ColShape + '|'
-        + xSqueezed.shape + '|' + convInfo.filterWidth + '|'
+    const im2Key = 'Im2Col|' + x2ColShape.join(',') + '|'
+        + xSqueezed.shape.join(',') + '|' + convInfo.filterWidth + '|'
         + convInfo.inChannels + '|' + convInfo.strideWidth + '|'
         + convInfo.strideHeight + '|' + convInfo.padInfo.left + '|'
         + convInfo.padInfo.top + '|' + convInfo.outWidth + '|'
@@ -740,12 +740,12 @@ export class WebGPUBackend extends KernelBackend {
     const workPerThread = env().get('WEBGPU_CONV2D_WORK_PER_THREAD') as number;
     if (workPerThread === -1) {
       // TODO(kainino0x): This may be obsolete, but is kept for reference.
-      const key = 'Conv2DNaive|' + convInfo.outShape + '|' + convInfo.dataFormat;
+      const key = 'Conv2DNaive|' + convInfo.outShape.join(',') + '|' + convInfo.dataFormat;
       program = this.getAndSaveProgram(key, () => {
         return new Conv2DNaiveProgram(convInfo);
       });
     } else {
-      const key = 'Conv2DMM|' + convInfo.outShape + '|' + convInfo.dataFormat
+      const key = 'Conv2DMM|' + convInfo.outShape.join(',') + '|' + convInfo.dataFormat
           + '|' + convInfo.filterHeight + '|' + convInfo.filterWidth
           + '|' + convInfo.inChannels + '|' + convInfo.inShape
           + '|' + workPerThread;
@@ -1021,7 +1021,7 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   relu<T extends Tensor>(x: T): T {
-    const key = 'UnaryOp|' + x.shape + '|' + unary_op.RELU;
+    const key = 'UnaryOp|' + x.shape.join(',') + '|' + unary_op.RELU;
     const program = this.getAndSaveProgram(key, () => {
       return new UnaryOpProgram(x.shape, unary_op.RELU);
     });
@@ -1197,7 +1197,7 @@ export class WebGPUBackend extends KernelBackend {
     // the old version while we try to understand conditions under which blocked
     // is faster.
     if (env().get('WEBGPU_MATMUL_WORK_PER_THREAD') === 0) {
-      const key = 'MatMul|' + a.shape + '|' + output.shape
+      const key = 'MatMul|' + a.shape.join(',') + '|' + output.shape.join(',')
           + '|' + transposeA + '|' + transposeB;
       program = this.getAndSaveProgram(key, () => {
           return new MatMulProgram(
@@ -1205,7 +1205,7 @@ export class WebGPUBackend extends KernelBackend {
           transposeB);
           });
     } else {
-      const key = 'MatMulPacked|' + a.shape + '|' + output.shape + '|'
+      const key = 'MatMulPacked|' + a.shape.join(',') + '|' + output.shape.join(',') + '|'
           + env().get('WEBGPU_MATMUL_WORK_PER_THREAD')
           + '|' + transposeA + '|' + transposeB;
       program = this.getAndSaveProgram(key, () => {
