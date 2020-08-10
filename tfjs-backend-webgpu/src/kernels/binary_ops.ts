@@ -43,6 +43,22 @@ const CHECK_NAN_SNIPPET = `
 export const MAX = CHECK_NAN_SNIPPET + `
   return max(a, b);
 `;
+export function getOpInt(op: string): number {
+  if(op === ADD) return 1; 
+  if(op === SUB) return 2; 
+  if(op === MUL) return 3; 
+  if(op === DIV) return 4; 
+  if(op === GREATER) return 5; 
+  if(op === GREATER_EQUAL) return 6; 
+  if(op === LESS) return 7; 
+  if(op === LESS_EQUAL) return 8; 
+  if(op === SQUARED_DIFFERENCE) return 9; 
+  if(op === INT_DIV) return 10; 
+  if(op === PRELU) return 11; 
+  if(op === MAX) return 12; 
+  return 0;
+}
+
 export function getBinaryProgram(
     op: string, aShape: number[], bShape: number[]) {
   const useSharedMemoryWithA =

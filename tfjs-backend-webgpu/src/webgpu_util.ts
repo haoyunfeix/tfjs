@@ -16,6 +16,20 @@
  */
 import {DataType} from '@tensorflow/tfjs-core';
 
+export const PADPROGRAM = 101;
+export const MaxPoolWithFilterSizeEqualsOneProgram = 102;
+export const Pool2DProgram = 103;
+export const MAX = 1031;
+export const MIN = 1032;
+export const Im2ColProgram = 104;
+export const MatMulPackedProgram = 105;
+export const MatMulProgram = 109;
+export const Conv2DNaiveProgram = 106;
+export const Conv2DMMProgram = 107;
+export const UnaryOpProgram = 108;
+export const SIGMOID = 1081;
+export const RELU= 1082;
+export const ResizeBilinearProgram = 109;
 const arrayProduct = (arr: number[]) => {
   let product = 1;
   for (let i = 0; i < arr.length; i++) {
