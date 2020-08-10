@@ -103,7 +103,8 @@ export class WebGPUBackend extends KernelBackend {
 
   private commandQueueOwnedIds = new WeakSet<DataId>();
   private binaryCache: {[key: string]: WebGPUBinary};
-  private programCache: {[key: string]: webgpu_program.WebGPUProgram};
+  //private programCache: {[key: string]: webgpu_program.WebGPUProgram};
+  private programCache = new Map();
   private fromPixels2DContext: CanvasRenderingContext2D;
   private bufferManager: BufferManager;
   private tensorMap: DataStorage<TensorBufferInfo>;
@@ -122,7 +123,7 @@ export class WebGPUBackend extends KernelBackend {
   constructor(device: GPUDevice, glslang: Glslang) {
     super();
     this.binaryCache = {};
-    this.programCache = {};
+    //this.programCache = {};
     this.device = device;
     this.queue = device.defaultQueue;
     this.commandQueue = [];
@@ -343,11 +344,27 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private getAndSaveProgram(
-      key: string, getProgram: () => webgpu_program.WebGPUProgram) {
-    if (typeof(this.programCache[key]) === 'undefined') {
-      this.programCache[key] = getProgram();
+      key: string|number, getProgram: () => webgpu_program.WebGPUProgram) {
+    //if (typeof(this.programCache[key]) === 'undefined') {
+    if (!this.programCache.has(key)) {
+      this.programCache.set(key, getProgram());
     }
-    return this.programCache[key];
+    return this.programCache.get(key);
+  }
+
+  private getHash(input: Array<string|number|boolean>) {
+    let hash = 0, i, l, c;
+    while(input.length) {
+      // pop value from stack
+      let next = input.pop();
+      next = '' + next;
+      for (i = 0, l = next.length; i < l; i++) {
+        c = next.charCodeAt(i);
+        hash = ((hash << 5) - hash) + c;
+        hash |= 0; // Convert to 32bit integer
+      }
+    }
+    return hash;
   }
 
   private getAndSavePipeline(
@@ -525,7 +542,9 @@ export class WebGPUBackend extends KernelBackend {
 
   pad<T extends Tensor>(
       x: T, paddings: Array<[number, number]>, constantValue: number): T {
-    const key = 'Pad|' + x.shape.join(',') + '|' + paddings.join(',') + '|' + constantValue;
+    //const key = 'Pad|' + x.shape.join(',') + '|' + paddings.join(',') + '|' + constantValue;
+    //const key = this.getHash(['Pad', x.shape.join(','), paddings.join(','), constantValue]);
+    const key = ['Pad', x.shape, paddings,constantValue];
     const program = this.getAndSaveProgram(key, () => {
         return new PadProgram(x.shape, paddings, constantValue);
     });
@@ -558,13 +577,16 @@ export class WebGPUBackend extends KernelBackend {
     let program: Pool2DProgram|MaxPoolWithFilterSizeEqualsOneProgram|
         webgpu_program.WebGPUProgram;
     if (convInfo.filterHeight === 1 && convInfo.filterWidth === 1) {
-      const key = 'MaxPoolWithFilterSizeEqualsOne|'
-          + convInfo.outShape.join(',');
+      //const key = 'MaxPoolWithFilterSizeEqualsOne|'
+      //    + convInfo.outShape.join(',');
+      const key = this.getHash(['MaxPoolWithFilterSizeEqualsOne',
+          convInfo.outShape.join(',')]);
       program = this.getAndSaveProgram(key, () => {
           return new MaxPoolWithFilterSizeEqualsOneProgram(convInfo);
       });
     } else {
-      const key = 'Pool2D|' + convInfo.outShape.join(',') + '|max';
+      //const key = 'Pool2D|' + convInfo.outShape.join(',') + '|max';
+      const key = this.getHash(['Pool2D',convInfo.outShape.join(','), 'max']);
       program = this.getAndSaveProgram(key, () => {
           return new Pool2DProgram(convInfo, 'max');
       });
@@ -585,7 +607,8 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private binaryOp(a: Tensor, b: Tensor, op: string): Tensor {
-    const key = op + '|' + a.shape.join(',') + '|' + b.shape.join(',');
+    //const key = op + '|' + a.shape.join(',') + '|' + b.shape.join(',');
+    const key = this.getHash([op, a.shape.join(','), b.shape.join(',')]);
     const program = this.getAndSaveProgram(key, () => {
       return binary_op.getBinaryProgram(op, a.shape, b.shape);
     });
@@ -661,13 +684,20 @@ export class WebGPUBackend extends KernelBackend {
     const xSqueezed = x.squeeze([0]);
     const w2Row = filter.reshape([1, sharedDim, -1]);
 
-    const im2Key = 'Im2Col|' + x2ColShape.join(',') + '|'
-        + xSqueezed.shape.join(',') + '|' + convInfo.filterWidth + '|'
-        + convInfo.inChannels + '|' + convInfo.strideWidth + '|'
-        + convInfo.strideHeight + '|' + convInfo.padInfo.left + '|'
-        + convInfo.padInfo.top + '|' + convInfo.outWidth + '|'
-        + convInfo.dilationHeight + '|' + convInfo.dilationWidth + '|'
-        + convInfo.dataFormat;
+    //const im2Key = 'Im2Col|' + x2ColShape.join(',') + '|'
+    //    + xSqueezed.shape.join(',') + '|' + convInfo.filterWidth + '|'
+    //    + convInfo.inChannels + '|' + convInfo.strideWidth + '|'
+    //    + convInfo.strideHeight + '|' + convInfo.padInfo.left + '|'
+    //    + convInfo.padInfo.top + '|' + convInfo.outWidth + '|'
+    //    + convInfo.dilationHeight + '|' + convInfo.dilationWidth + '|'
+    //    + convInfo.dataFormat;
+    const im2Key = this.getHash(['Im2Col' , x2ColShape.join(',') , 
+         xSqueezed.shape.join(',') , convInfo.filterWidth  
+        , convInfo.inChannels , convInfo.strideWidth 
+        , convInfo.strideHeight , convInfo.padInfo.left
+        , convInfo.padInfo.top , convInfo.outWidth
+        , convInfo.dilationHeight , convInfo.dilationWidth
+        , convInfo.dataFormat]);
     const im2ColProgram = this.getAndSaveProgram(im2Key, () => {
         return new Im2ColProgram(x2ColShape, xSqueezed.shape, convInfo);
     });
@@ -678,10 +708,14 @@ export class WebGPUBackend extends KernelBackend {
     const transposeA = false;
     const transposeB = false;
 
-    const matMulKey = 'MatMulPacked|' + [1, x2ColShape[0], x2ColShape[1]]
-        + '|' + [1, numCols, convInfo.outChannels] + '|'
-        + env().get('WEBGPU_MATMUL_WORK_PER_THREAD') + '|' + transposeA
-        + '|' + transposeB;
+    //const matMulKey = 'MatMulPacked|' + [1, x2ColShape[0], x2ColShape[1]]
+    //    + '|' + [1, numCols, convInfo.outChannels] + '|'
+    //    + env().get('WEBGPU_MATMUL_WORK_PER_THREAD') + '|' + transposeA
+    //    + '|' + transposeB;
+    const matMulKey = this.getHash(['MatMulPacked' , [1, x2ColShape[0], x2ColShape[1]].join(',')
+        , [1, numCols, convInfo.outChannels].join(',') 
+        , env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number , transposeA
+        , transposeB]);
     const matMulProgram = this.getAndSaveProgram(matMulKey, () => {
         return new MatMulPackedProgram(
         [1, x2ColShape[0], x2ColShape[1]], [1, numCols, convInfo.outChannels],
@@ -740,15 +774,20 @@ export class WebGPUBackend extends KernelBackend {
     const workPerThread = env().get('WEBGPU_CONV2D_WORK_PER_THREAD') as number;
     if (workPerThread === -1) {
       // TODO(kainino0x): This may be obsolete, but is kept for reference.
-      const key = 'Conv2DNaive|' + convInfo.outShape.join(',') + '|' + convInfo.dataFormat;
+      //const key = 'Conv2DNaive|' + convInfo.outShape.join(',') + '|' + convInfo.dataFormat;
+      const key = this.getHash(['Conv2DNaive' , convInfo.outShape.join(',') , convInfo.dataFormat]);
       program = this.getAndSaveProgram(key, () => {
         return new Conv2DNaiveProgram(convInfo);
       });
     } else {
-      const key = 'Conv2DMM|' + convInfo.outShape.join(',') + '|' + convInfo.dataFormat
-          + '|' + convInfo.filterHeight + '|' + convInfo.filterWidth
-          + '|' + convInfo.inChannels + '|' + convInfo.inShape
-          + '|' + workPerThread;
+      //const key = 'Conv2DMM|' + convInfo.outShape.join(',') + '|' + convInfo.dataFormat
+      //    + '|' + convInfo.filterHeight + '|' + convInfo.filterWidth
+      //    + '|' + convInfo.inChannels + '|' + convInfo.inShape
+      //    + '|' + workPerThread;
+      const key = this.getHash(['Conv2DMM' , convInfo.outShape.join(',') , convInfo.dataFormat
+          , convInfo.filterHeight , convInfo.filterWidth
+          , convInfo.inChannels , convInfo.inShape.join(',')
+          , workPerThread]);
       program = this.getAndSaveProgram(key, () => {
         return new Conv2DMMProgram(convInfo, workPerThread);
       });
@@ -1013,7 +1052,8 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   sigmoid<T extends Tensor>(x: T): T {
-    const key = 'UnaryOp|' + x.shape.join(',') + '|' + unary_op.RELU;
+    //const key = 'UnaryOp|' + x.shape.join(',') + '|' + unary_op.RELU;
+    const key = this.getHash(['UnaryOp' , x.shape.join(',') , unary_op.RELU]);
     const program = this.getAndSaveProgram(key, () => {
       return new UnaryOpProgram(x.shape, unary_op.SIGMOID);
     });
@@ -1021,7 +1061,8 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   relu<T extends Tensor>(x: T): T {
-    const key = 'UnaryOp|' + x.shape.join(',') + '|' + unary_op.RELU;
+    //const key = 'UnaryOp|' + x.shape.join(',') + '|' + unary_op.RELU;
+    const key = this.getHash(['UnaryOp', x.shape.join(','), unary_op.RELU]);
     const program = this.getAndSaveProgram(key, () => {
       return new UnaryOpProgram(x.shape, unary_op.RELU);
     });
@@ -1092,8 +1133,10 @@ export class WebGPUBackend extends KernelBackend {
   resizeBilinear(
       x: Tensor4D, newHeight: number, newWidth: number,
       alignCorners: boolean): Tensor4D {
-    const key = 'ResizeBilinear|' + x.shape.join(',') + '|'
-        + newHeight + '|' + newWidth + '|' + alignCorners;
+    //const key = 'ResizeBilinear|' + x.shape.join(',') + '|'
+    //    + newHeight + '|' + newWidth + '|' + alignCorners;
+    const key = this.getHash(['ResizeBilinear' , x.shape.join(',')
+        , newHeight , newWidth , alignCorners]);
     const program = this.getAndSaveProgram(key, () => {
         return new ResizeBilinearProgram(x.shape, newHeight, newWidth, alignCorners);
     });
@@ -1197,17 +1240,22 @@ export class WebGPUBackend extends KernelBackend {
     // the old version while we try to understand conditions under which blocked
     // is faster.
     if (env().get('WEBGPU_MATMUL_WORK_PER_THREAD') === 0) {
-      const key = 'MatMul|' + a.shape.join(',') + '|' + output.shape.join(',')
-          + '|' + transposeA + '|' + transposeB;
+      //const key = 'MatMul|' + a.shape.join(',') + '|' + output.shape.join(',')
+      //    + '|' + transposeA + '|' + transposeB;
+      const key = this.getHash(['MatMul' , a.shape.join(',') , output.shape.join(',')
+          , transposeA , transposeB]);
       program = this.getAndSaveProgram(key, () => {
           return new MatMulProgram(
           a.shape, output.shape as [number, number, number], transposeA,
           transposeB);
           });
     } else {
-      const key = 'MatMulPacked|' + a.shape.join(',') + '|' + output.shape.join(',') + '|'
-          + env().get('WEBGPU_MATMUL_WORK_PER_THREAD')
-          + '|' + transposeA + '|' + transposeB;
+      //const key = 'MatMulPacked|' + a.shape.join(',') + '|' + output.shape.join(',') + '|'
+      //    + env().get('WEBGPU_MATMUL_WORK_PER_THREAD')
+      //    + '|' + transposeA + '|' + transposeB;
+      const key = this.getHash(['MatMulPacked' , a.shape.join(',') , output.shape.join(',') 
+          , env().get('WEBGPU_MATMUL_WORK_PER_THREAD')
+          , transposeA , transposeB]);
       program = this.getAndSaveProgram(key, () => {
           return new MatMulPackedProgram(
           a.shape, output.shape as [number, number, number],
