@@ -353,26 +353,27 @@ export class WebGPUBackend extends KernelBackend {
     return this.programCache.get(key);
   }
 
-  private getHash<R extends Rank>(input: Array<boolean|ShapeMap[R]|number>) {
+  private getHash<R extends Rank>(input: Array<boolean|ShapeMap[R]|number|Array<number>>) {
     let hash = 0, i, l;
+    const offset = 0x9e3779b9;
     while(input.length) {
       // pop value from input
       let next = input.pop();
       if(Array.isArray(next)) {
         for (i = 0, l = next.length; i < l; i++) {
-          hash ^= (hash << 6) + (hash >> 2) + next[i] + 0x9e3779b9;
+          hash ^= (hash << 6) + (hash >> 2) + next[i] + offset;
         }
       }else if(typeof(next) === 'number'){
-        hash ^= (hash << 6) + (hash >> 2) + next + 0x9e3779b9;
+        hash ^= (hash << 6) + (hash >> 2) + next + offset;
       }else if(typeof(next) === 'boolean'){
         if (next){
-          hash ^= (hash << 6) + (hash >> 2) + 1 + 0x9e3779b9;
+          hash ^= (hash << 6) + (hash >> 2) + 1 + offset;
         }else {
-          hash ^= (hash << 6) + (hash >> 2) + 2 + 0x9e3779b9;
+          hash ^= (hash << 6) + (hash >> 2) + 2 + offset;
         }
       }else {
         throw new Error(`input keyInfo ${
-            next} is not a number or ShapeMap.`);
+            next} is not a number or boolean or ShapeMap.`);
       }
     }
     return hash;
@@ -557,7 +558,8 @@ export class WebGPUBackend extends KernelBackend {
     //const key = this.getHash(['Pad', x.shape.join(','), paddings.join(','), constantValue]);
     //const key = ['Pad', x.shape, paddings,constantValue];
     //const key = this.getHash([webgpu_util.PADPROGRAM, x.shape, paddings, constantValue]);
-    const key = this.getHash([webgpu_util.PADPROGRAM, x.shape, constantValue]);
+    const arrPaddings = paddings.reduce((accumulator, value) => accumulator.concat(value), []) as Array<number>;
+    const key = this.getHash([webgpu_util.PADPROGRAM, x.shape, arrPaddings, constantValue]);
     const program = this.getAndSaveProgram(key, () => {
         return new PadProgram(x.shape, paddings, constantValue);
     });
@@ -623,7 +625,7 @@ export class WebGPUBackend extends KernelBackend {
 
   private binaryOp(a: Tensor, b: Tensor, op: string): Tensor {
     //const key = op + '|' + a.shape.join(',') + '|' + b.shape.join(',');
-    const key = this.getHash([binary_op.getOpInt(op), a.shape, b.shape]);
+    const key = this.getHash([binary_op.getOpNum(op), a.shape, b.shape]);
     const program = this.getAndSaveProgram(key, () => {
       return binary_op.getBinaryProgram(op, a.shape, b.shape);
     });

@@ -43,19 +43,19 @@ const CHECK_NAN_SNIPPET = `
 export const MAX = CHECK_NAN_SNIPPET + `
   return max(a, b);
 `;
-export function getOpInt(op: string): number {
-  if(op === ADD) return 1; 
-  if(op === SUB) return 2; 
-  if(op === MUL) return 3; 
-  if(op === DIV) return 4; 
-  if(op === GREATER) return 5; 
-  if(op === GREATER_EQUAL) return 6; 
-  if(op === LESS) return 7; 
-  if(op === LESS_EQUAL) return 8; 
-  if(op === SQUARED_DIFFERENCE) return 9; 
-  if(op === INT_DIV) return 10; 
-  if(op === PRELU) return 11; 
-  if(op === MAX) return 12; 
+export function getOpNum(op: string): number {
+  if(op === ADD) return 0x01; 
+  if(op === SUB) return 0x02; 
+  if(op === MUL) return 0x03; 
+  if(op === DIV) return 0x04; 
+  if(op === GREATER) return 0x05; 
+  if(op === GREATER_EQUAL) return 0x06; 
+  if(op === LESS) return 0x07; 
+  if(op === LESS_EQUAL) return 0x08; 
+  if(op === SQUARED_DIFFERENCE) return 0x09; 
+  if(op === INT_DIV) return 0x0a; 
+  if(op === PRELU) return 0x0b; 
+  if(op === MAX) return 0x0c; 
   return 0;
 }
 
