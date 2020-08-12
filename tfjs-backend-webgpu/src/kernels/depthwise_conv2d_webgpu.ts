@@ -22,7 +22,6 @@ import {WebGPUProgram} from './webgpu_program';
 
 export class DepthwiseConv2DProgram implements WebGPUProgram {
   outputShape: number[];
-  shaderKey: string;
   userCode: string;
   dispatchLayout: {x: number[], y: number[], z: number[]};
   dispatch: [number, number, number];
@@ -87,6 +86,5 @@ export class DepthwiseConv2DProgram implements WebGPUProgram {
       }
     `;
 
-    this.shaderKey = `depthwise${channelMul}`;
   }
 }

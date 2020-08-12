@@ -16,20 +16,43 @@
  */
 import {DataType} from '@tensorflow/tfjs-core';
 
-export const PADPROGRAM = 101;
-export const MaxPoolWithFilterSizeEqualsOneProgram = 102;
-export const Pool2DProgram = 103;
-export const MAX = 1031;
-export const MIN = 1032;
-export const Im2ColProgram = 104;
-export const MatMulPackedProgram = 105;
-export const MatMulProgram = 109;
-export const Conv2DNaiveProgram = 106;
-export const Conv2DMMProgram = 107;
-export const UnaryOpProgram = 108;
-export const SIGMOID = 1081;
-export const RELU= 1082;
-export const ResizeBilinearProgram = 109;
+export const PADPROGRAM = 0x0101;
+export const MAXPOOLWITHFILTERSIZEEQUALSONEPROGRAM = 0x0102;
+export const POOL2DPROGRAM = 0x103;
+export const IM2COLPROGRAM= 104;
+export const MATMULPACKEDPROGRAM= 105;
+export const MATMULPROGRAM= 109;
+export const CONV2DNAIVEPROGRAM= 106;
+export const CONV2DMMPROGRAM = 107;
+export const UNARYOPPROGRAM= 108;
+export const RESIZEBILINEARPROGRAM = 109;
+export const DEPTHWISECONV2DPROGRAM= 110;
+export const ARGMINMAXPROGRAM= 111;
+export const REDUCEPROGRAM= 112;
+export const CLIPPROGRAM= 113;
+export const SLICEPROGRAM= 114;
+export const STRIDEDSLICEPROGRAM= 115;
+export const CONCATPROGRAM= 116;
+export const SELECTPROGRAM= 117;
+export const CROPANDRESIZEPROGRAM= 118;
+export const FILLPROGRAM = 119;
+export const TRANSPOSESHAREDPROGRAM= 120;
+export const TRANSPOSEPROGRAM= 121;
+
+export const MAX = 0x0201;
+export const MIN = 0x0202;
+export const AVG = 0x0203;
+
+export const NEG = 0x0301;
+export const TANH = 0x0302;
+export const EXP = 0x0303;
+export const LOG= 0x0303;
+export const SIGMOID = 0x0304;
+export const RELU= 0x0305;
+export const RELU6= 0x0306;
+export const ABS = 0x0306;
+export const PRELU = 0x0307;
+
 const arrayProduct = (arr: number[]) => {
   let product = 1;
   for (let i = 0; i < arr.length; i++) {
@@ -150,4 +173,42 @@ export function ArrayBufferToTypedArray(data: ArrayBuffer, dtype: DataType) {
   } else {
     throw new Error(`Unknown dtype ${dtype}`);
   }
+}
+
+export function mapActivationToNum(activation: string): number {
+  if (activation === 'linear') {
+    return 0x01;
+  } else if (activation === 'relu') {
+    return 0x02;
+  } else if (activation === 'elu') {
+    return 0x03;
+  } else if (activation === 'relu6') {
+    return 0x04;
+  } else if (activation === 'prelu') {
+    return 0x05;
+  }
+  throw new Error(`Activation ${
+      activation} has not been implemented for the WebGPU backend.`);
+}
+
+export function mapReduceTypeToNum(type: string): number {
+  if (type === 'min') {
+    return 0x01;
+  } else if (type === 'max') {
+    return 0x02;
+  } else if (type === 'sum') {
+    return 0x03;
+  }
+  throw new Error(`Reduce type ${
+      type} has not been implemented for the WebGPU backend.`);
+}
+
+export function mapCropToNum(method: string): number {
+  if (method === 'bilinear') {
+    return 0x01;
+  } else if (method === 'nearest') {
+    return 0x02;
+  }
+  throw new Error(`Crop method ${
+      method} has not been implemented for the WebGPU backend.`);
 }

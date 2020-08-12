@@ -49,9 +49,7 @@ import {TransposeProgram} from './kernels/transpose_webgpu';
 import * as unary_op from './kernels/unary_op_webgpu';
 import {UnaryOpProgram} from './kernels/unary_op_webgpu';
 import * as webgpu_program from './kernels/webgpu_program';
-import {WebGPUBinary} from './kernels/webgpu_program';
 import * as webgpu_util from './webgpu_util';
-import { PassThrough } from 'stream';
 
 export interface WebGPUMemoryInfo extends backend_util.MemoryInfo {
   numBytesInGPU: number;
@@ -103,9 +101,7 @@ export class WebGPUBackend extends KernelBackend {
   commandQueue: GPUCommandEncoder[];
 
   private commandQueueOwnedIds = new WeakSet<DataId>();
-  private binaryCache: {[key: string]: WebGPUBinary};
-  //private programCache: {[key: string]: webgpu_program.WebGPUProgram};
-  private programCache = new Map();
+  private programCache: Map<number, webgpu_program.WebGPUProgram> = new Map();
   private fromPixels2DContext: CanvasRenderingContext2D;
   private bufferManager: BufferManager;
   private tensorMap: DataStorage<TensorBufferInfo>;
@@ -123,8 +119,6 @@ export class WebGPUBackend extends KernelBackend {
 
   constructor(device: GPUDevice, glslang: Glslang) {
     super();
-    this.binaryCache = {};
-    //this.programCache = {};
     this.device = device;
     this.queue = device.defaultQueue;
     this.commandQueue = [];
@@ -345,33 +339,33 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private getAndSaveProgram(
-      key: string|number, getProgram: () => webgpu_program.WebGPUProgram) {
-    //if (typeof(this.programCache[key]) === 'undefined') {
+      key: number, getProgram: () => webgpu_program.WebGPUProgram) {
     if (!this.programCache.has(key)) {
       this.programCache.set(key, getProgram());
     }
     return this.programCache.get(key);
   }
 
-  private getHash<R extends Rank>(input: Array<boolean|ShapeMap[R]|number|Array<number>>) {
+  // This hash algorithm came from https://source.chromium.org/chromium/chromium/src/+/master:third_party/dawn/src/common/HashUtils.h;l=47;bpv=1;bpt=0
+  private getHash<R extends Rank>(input: Array<boolean|number|ShapeMap[R]|Array<number>>) {
     let hash = 0, i, l;
     const offset = 0x9e3779b9;
-    while(input.length) {
+    while (input.length) {
       // pop value from input
       let next = input.pop();
-      if(Array.isArray(next)) {
+      if (Array.isArray(next)) {
         for (i = 0, l = next.length; i < l; i++) {
           hash ^= (hash << 6) + (hash >> 2) + next[i] + offset;
         }
-      }else if(typeof(next) === 'number'){
+      } else if (typeof(next) === 'number'){
         hash ^= (hash << 6) + (hash >> 2) + next + offset;
-      }else if(typeof(next) === 'boolean'){
+      } else if (typeof(next) === 'boolean'){
         if (next){
           hash ^= (hash << 6) + (hash >> 2) + 1 + offset;
-        }else {
+        } else {
           hash ^= (hash << 6) + (hash >> 2) + 2 + offset;
         }
-      }else {
+      } else {
         throw new Error(`input keyInfo ${
             next} is not a number or boolean or ShapeMap.`);
       }
@@ -380,7 +374,8 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private getAndSavePipeline(
-      program: webgpu_program.WebGPUProgram, getBinary: () => webgpu_program.WebGPUBinary) {
+      program: webgpu_program.WebGPUProgram,
+      getBinary: () => webgpu_program.WebGPUBinary) {
     if (typeof(program.binary) === 'undefined') {
       program.binary = getBinary();
     }
@@ -554,12 +549,10 @@ export class WebGPUBackend extends KernelBackend {
 
   pad<T extends Tensor>(
       x: T, paddings: Array<[number, number]>, constantValue: number): T {
-    //const key = 'Pad|' + x.shape.join(',') + '|' + paddings.join(',') + '|' + constantValue;
-    //const key = this.getHash(['Pad', x.shape.join(','), paddings.join(','), constantValue]);
-    //const key = ['Pad', x.shape, paddings,constantValue];
-    //const key = this.getHash([webgpu_util.PADPROGRAM, x.shape, paddings, constantValue]);
-    const arrPaddings = paddings.reduce((accumulator, value) => accumulator.concat(value), []) as Array<number>;
-    const key = this.getHash([webgpu_util.PADPROGRAM, x.shape, arrPaddings, constantValue]);
+    const paddings1D = paddings.reduce((accumulator, value) =>
+        accumulator.concat(value), []) as Array<number>;
+    const key = this.getHash([webgpu_util.PADPROGRAM, x.shape, paddings1D,
+        constantValue]);
     const program = this.getAndSaveProgram(key, () => {
         return new PadProgram(x.shape, paddings, constantValue);
     });
@@ -568,11 +561,22 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   avgPool(x: Tensor4D, convInfo: backend_util.Conv2DInfo): Tensor4D {
-    let program: Pool2DProgram|MaxPoolWithFilterSizeEqualsOneProgram;
+    let program: Pool2DProgram|MaxPoolWithFilterSizeEqualsOneProgram|
+        webgpu_program.WebGPUProgram;
     if (convInfo.filterHeight === 1 && convInfo.filterWidth === 1) {
-      program = new MaxPoolWithFilterSizeEqualsOneProgram(convInfo);
+      const key = this.getHash([
+          webgpu_util.MAXPOOLWITHFILTERSIZEEQUALSONEPROGRAM,
+          convInfo.outShape]);
+      program = this.getAndSaveProgram(key, () => {
+          return new MaxPoolWithFilterSizeEqualsOneProgram(convInfo);
+      });
     } else {
-      program = new Pool2DProgram(convInfo, 'avg');
+      const key = this.getHash([
+          webgpu_util.POOL2DPROGRAM,
+          convInfo.outShape, webgpu_util.AVG]);
+      program = this.getAndSaveProgram(key, () => {
+          return new Pool2DProgram(convInfo, 'avg');
+      });
     }
 
     const output = this.makeOutputArray(program.outputShape, x.dtype);
@@ -592,18 +596,14 @@ export class WebGPUBackend extends KernelBackend {
     let program: Pool2DProgram|MaxPoolWithFilterSizeEqualsOneProgram|
         webgpu_program.WebGPUProgram;
     if (convInfo.filterHeight === 1 && convInfo.filterWidth === 1) {
-      //const key = 'MaxPoolWithFilterSizeEqualsOne|'
-      //    + convInfo.outShape.join(',');
-      //const key = this.getHash(['MaxPoolWithFilterSizeEqualsOne',
-      //    convInfo.outShape.join(',')]);
-      const key = this.getHash([webgpu_util.MaxPoolWithFilterSizeEqualsOneProgram,
+      const key = this.getHash([
+          webgpu_util.MAXPOOLWITHFILTERSIZEEQUALSONEPROGRAM,
           convInfo.outShape]);
       program = this.getAndSaveProgram(key, () => {
           return new MaxPoolWithFilterSizeEqualsOneProgram(convInfo);
       });
     } else {
-      //const key = 'Pool2D|' + convInfo.outShape.join(',') + '|max';
-      const key = this.getHash([webgpu_util.PADPROGRAM,convInfo.outShape, webgpu_util.MAX]);
+      const key = this.getHash([webgpu_util.POOL2DPROGRAM,convInfo.outShape, webgpu_util.MAX]);
       program = this.getAndSaveProgram(key, () => {
           return new Pool2DProgram(convInfo, 'max');
       });
@@ -624,7 +624,6 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private binaryOp(a: Tensor, b: Tensor, op: string): Tensor {
-    //const key = op + '|' + a.shape.join(',') + '|' + b.shape.join(',');
     const key = this.getHash([binary_op.getOpNum(op), a.shape, b.shape]);
     const program = this.getAndSaveProgram(key, () => {
       return binary_op.getBinaryProgram(op, a.shape, b.shape);
@@ -652,7 +651,10 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private binaryCompareOp(a: Tensor, b: Tensor, op: string): Tensor {
-    const program = new BinaryOpProgram(op, a.shape, b.shape);
+    const key = this.getHash([binary_op.getOpNum(op), a.shape, b.shape]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new BinaryOpProgram(op, a.shape, b.shape);
+    });
     const dataId = this.write(null /*values*/, program.outputShape, 'bool');
     const output = engine().makeTensorFromDataId(
         dataId, program.outputShape, 'bool', this);
@@ -701,14 +703,7 @@ export class WebGPUBackend extends KernelBackend {
     const xSqueezed = x.squeeze([0]);
     const w2Row = filter.reshape([1, sharedDim, -1]);
 
-    //const im2Key = 'Im2Col|' + x2ColShape.join(',') + '|'
-    //    + xSqueezed.shape.join(',') + '|' + convInfo.filterWidth + '|'
-    //    + convInfo.inChannels + '|' + convInfo.strideWidth + '|'
-    //    + convInfo.strideHeight + '|' + convInfo.padInfo.left + '|'
-    //    + convInfo.padInfo.top + '|' + convInfo.outWidth + '|'
-    //    + convInfo.dilationHeight + '|' + convInfo.dilationWidth + '|'
-    //    + convInfo.dataFormat;
-    const im2Key = this.getHash([webgpu_util.Im2ColProgram , x2ColShape, 
+    const im2Key = this.getHash([webgpu_util.IM2COLPROGRAM , x2ColShape, 
          xSqueezed.shape, convInfo.filterWidth  
         , convInfo.inChannels , convInfo.strideWidth 
         , convInfo.strideHeight , convInfo.padInfo.left
@@ -728,7 +723,7 @@ export class WebGPUBackend extends KernelBackend {
     //    + '|' + [1, numCols, convInfo.outChannels] + '|'
     //    + env().get('WEBGPU_MATMUL_WORK_PER_THREAD') + '|' + transposeA
     //    + '|' + transposeB;
-    const matMulKey = this.getHash([webgpu_util.MatMulPackedProgram, [1, x2ColShape[0], x2ColShape[1]]
+    const matMulKey = this.getHash([webgpu_util.MATMULPACKEDPROGRAM, [1, x2ColShape[0], x2ColShape[1]]
         , [1, numCols, convInfo.outChannels] 
         , env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number , transposeA
         , transposeB]);
@@ -790,17 +785,12 @@ export class WebGPUBackend extends KernelBackend {
     const workPerThread = env().get('WEBGPU_CONV2D_WORK_PER_THREAD') as number;
     if (workPerThread === -1) {
       // TODO(kainino0x): This may be obsolete, but is kept for reference.
-      //const key = 'Conv2DNaive|' + convInfo.outShape.join(',') + '|' + convInfo.dataFormat;
-      const key = this.getHash([webgpu_util.Conv2DNaiveProgram, convInfo.outShape]);
+      const key = this.getHash([webgpu_util.CONV2DNAIVEPROGRAM, convInfo.outShape]);
       program = this.getAndSaveProgram(key, () => {
         return new Conv2DNaiveProgram(convInfo);
       });
     } else {
-      //const key = 'Conv2DMM|' + convInfo.outShape.join(',') + '|' + convInfo.dataFormat
-      //    + '|' + convInfo.filterHeight + '|' + convInfo.filterWidth
-      //    + '|' + convInfo.inChannels + '|' + convInfo.inShape
-      //    + '|' + workPerThread;
-      const key = this.getHash([webgpu_util.Conv2DMMProgram, convInfo.outShape
+      const key = this.getHash([webgpu_util.CONV2DMMPROGRAM, convInfo.outShape
           , convInfo.filterHeight , convInfo.filterWidth
           , convInfo.inChannels , convInfo.inShape
           , workPerThread]);
@@ -823,7 +813,11 @@ export class WebGPUBackend extends KernelBackend {
   depthwiseConv2D(
       x: Tensor4D, filter: Tensor4D,
       convInfo: backend_util.Conv2DInfo): Tensor4D {
-    const program = new DepthwiseConv2DProgram(convInfo);
+    const key = this.getHash([webgpu_util.DEPTHWISECONV2DPROGRAM,
+        convInfo.outShape, convInfo.outChannels, convInfo.inChannels]);
+    const program = this.getAndSaveProgram(key, () =>{
+        return new DepthwiseConv2DProgram(convInfo);
+    });
     const dimensions = [
       convInfo.filterHeight, convInfo.filterWidth, convInfo.padInfo.top,
       convInfo.padInfo.left, convInfo.strideHeight, convInfo.strideWidth,
@@ -862,17 +856,28 @@ export class WebGPUBackend extends KernelBackend {
     const fusedActivation = activation ?
         this.mapActivationToShaderProgram(activation, false) :
         null;
-    let program: Conv2DMMProgram|Conv2DNaiveProgram;
+    let program: Conv2DMMProgram|Conv2DNaiveProgram|webgpu_program.WebGPUProgram;
 
     const workPerThread = env().get('WEBGPU_CONV2D_WORK_PER_THREAD') as number;
     if (workPerThread === -1) {
       // TODO(kainino0x): This may be obsolete, but is kept for reference.
-      program = new Conv2DNaiveProgram(
+      const key = this.getHash([webgpu_util.CONV2DNAIVEPROGRAM, convInfo.outShape,
+          hasBias, webgpu_util.mapActivationToNum(activation), hasPreluActivationWeights]);
+      program = this.getAndSaveProgram(key, () => {
+          return new Conv2DNaiveProgram(
           convInfo, hasBias, fusedActivation, hasPreluActivationWeights);
+      });
     } else {
-      program = new Conv2DMMProgram(
+      const key = this.getHash([webgpu_util.CONV2DMMPROGRAM, convInfo.outShape,
+          convInfo.filterHeight, convInfo.filterWidth, convInfo.inChannels,
+          convInfo.inShape, workPerThread, hasBias,
+          webgpu_util.mapActivationToNum(activation),
+          hasPreluActivationWeights]);
+      program = this.getAndSaveProgram(key, () => {
+          return new Conv2DMMProgram(
           convInfo, workPerThread, hasBias, fusedActivation,
           hasPreluActivationWeights);
+      });
     }
 
     const pad = [convInfo.padInfo.top, convInfo.padInfo.left];
@@ -895,7 +900,11 @@ export class WebGPUBackend extends KernelBackend {
 
   private argMinMaxReduce(x: Tensor, axis: number, reduceType: 'min'|'max'):
       Tensor {
-    const program = new ArgMinMaxProgram(x.shape, axis, reduceType);
+    const key = this.getHash([webgpu_util.ARGMINMAXPROGRAM, x.shape, axis,
+        webgpu_util.mapReduceTypeToNum(reduceType)])
+    const program = this.getAndSaveProgram(key, () => {
+        return new ArgMinMaxProgram(x.shape, axis, reduceType);
+    });
     const output = this.makeOutputArray(program.outputShape, 'int32');
     return this.compileAndRun(program, [x], output, [axis]);
   }
@@ -914,7 +923,11 @@ export class WebGPUBackend extends KernelBackend {
     const inSize = x.shape[1];
     const windowSize = backend_util.computeOptimalWindowSize(inSize);
     const reduceInfo = {windowSize, inSize, batchSize};
-    const program = new ReduceProgram(reduceInfo, reduceType);
+    const key = this.getHash([webgpu_util.REDUCEPROGRAM, x.shape,
+        webgpu_util.mapReduceTypeToNum(reduceType)]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new ReduceProgram(reduceInfo, reduceType);
+    });
     const output = this.makeOutputArray(program.outputShape, dtype);
     return this.compileAndRun(program, [x], output);
   }
@@ -948,7 +961,10 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   clip<T extends Tensor>(x: T, min: number, max: number): T {
-    const program = new ClipProgram(x.shape, min, max);
+    const key = this.getHash([webgpu_util.CLIPPROGRAM, x.shape, min, max]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new ClipProgram(x.shape, min, max);
+    });
     return this.compileAndRun(program, [x]);
   }
 
@@ -961,7 +977,10 @@ export class WebGPUBackend extends KernelBackend {
       return engine().makeTensor([], size, x.dtype, this) as T;
     }
     // TODO(xing.xu): Add shadow slice support.
-    const program = new SliceProgram(begin, size);
+    const key = this.getHash([webgpu_util.SLICEPROGRAM, begin, size]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new SliceProgram(begin, size);
+    });
     return this.compileAndRun(program, [x], null);
   }
 
@@ -977,7 +996,10 @@ export class WebGPUBackend extends KernelBackend {
       return engine().makeTensor([], outShape, x.dtype, this) as T;
     }
 
-    const program = new StridedSliceProgram(begin, strides, outShape);
+    const key = this.getHash([webgpu_util.STRIDEDSLICEPROGRAM, strides, outShape]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new StridedSliceProgram(begin, strides, outShape);
+    });
     return this.compileAndRun(program, [x]);
   }
 
@@ -1003,7 +1025,12 @@ export class WebGPUBackend extends KernelBackend {
       util.sizeFromShape(t.shape.slice(0, axis)),
       util.sizeFromShape(t.shape.slice(axis))
     ]));
-    const program = new ConcatProgram(tensors2D.map(t => t.shape));
+    const shapeArray = tensors2D.reduce((accumulator, value) =>
+        accumulator.concat(value.shape), []) as Array<number>;
+    const key = this.getHash([webgpu_util.CONV2DMMPROGRAM, shapeArray]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new ConcatProgram(tensors2D.map(t => t.shape));
+    });
     const res: Tensor = this.compileAndRun(program, tensors2D);
     return res.reshape(outShape);
   }
@@ -1030,12 +1057,20 @@ export class WebGPUBackend extends KernelBackend {
     if (this.shouldExecuteOnCPU([x])) {
       return this.cpuBackend.neg(x);
     }
-    const program = new UnaryOpProgram(x.shape, unary_op.NEG);
+    const key = this.getHash([webgpu_util.UNARYOPPROGRAM, x.shape,
+        webgpu_util.NEG]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new UnaryOpProgram(x.shape, unary_op.NEG);
+    });
     return this.compileAndRun(program, [x]);
   }
 
   tanh<T extends Tensor>(x: T): T {
-    const program = new UnaryOpProgram(x.shape, unary_op.TANH);
+    const key = this.getHash([webgpu_util.UNARYOPPROGRAM, x.shape,
+        webgpu_util.TANH]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new UnaryOpProgram(x.shape, unary_op.TANH);
+    });
     return this.compileAndRun(program, [x]);
   }
 
@@ -1043,7 +1078,11 @@ export class WebGPUBackend extends KernelBackend {
     if (this.shouldExecuteOnCPU([x])) {
       return this.cpuBackend.exp(x);
     }
-    const program = new UnaryOpProgram(x.shape, unary_op.EXP);
+    const key = this.getHash([webgpu_util.UNARYOPPROGRAM, x.shape,
+        webgpu_util.EXP]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new UnaryOpProgram(x.shape, unary_op.EXP);
+    });
     return this.compileAndRun(program, [x]);
   }
 
@@ -1063,13 +1102,17 @@ export class WebGPUBackend extends KernelBackend {
     if (this.shouldExecuteOnCPU([x])) {
       return this.cpuBackend.log(x);
     }
-    const program = new UnaryOpProgram(x.shape, unary_op.LOG);
+    const key = this.getHash([webgpu_util.UNARYOPPROGRAM, x.shape,
+        webgpu_util.LOG]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new UnaryOpProgram(x.shape, unary_op.LOG);
+    });
     return this.compileAndRun(program, [x]);
   }
 
   sigmoid<T extends Tensor>(x: T): T {
-    //const key = 'UnaryOp|' + x.shape.join(',') + '|' + unary_op.RELU;
-    const key = this.getHash([webgpu_util.UnaryOpProgram, x.shape, webgpu_util.SIGMOID]);
+    const key = this.getHash([webgpu_util.UNARYOPPROGRAM, x.shape,
+        webgpu_util.SIGMOID]);
     const program = this.getAndSaveProgram(key, () => {
       return new UnaryOpProgram(x.shape, unary_op.SIGMOID);
     });
@@ -1077,8 +1120,8 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   relu<T extends Tensor>(x: T): T {
-    //const key = 'UnaryOp|' + x.shape.join(',') + '|' + unary_op.RELU;
-    const key = this.getHash([webgpu_util.UnaryOpProgram, x.shape, webgpu_util.RELU]);
+    const key = this.getHash([webgpu_util.UNARYOPPROGRAM, x.shape,
+      webgpu_util.RELU]);
     const program = this.getAndSaveProgram(key, () => {
       return new UnaryOpProgram(x.shape, unary_op.RELU);
     });
@@ -1086,7 +1129,11 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   relu6<T extends Tensor>(x: T): T {
-    const program = new UnaryOpProgram(x.shape, unary_op.RELU6);
+    const key = this.getHash([webgpu_util.UNARYOPPROGRAM, x.shape,
+      webgpu_util.RELU6]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new UnaryOpProgram(x.shape, unary_op.RELU6);
+    });
     return this.compileAndRun(program, [x]);
   }
 
@@ -1094,17 +1141,29 @@ export class WebGPUBackend extends KernelBackend {
     if (this.shouldExecuteOnCPU([x])) {
       return this.cpuBackend.abs(x);
     }
-    const program = new UnaryOpProgram(x.shape, unary_op.ABS);
+    const key = this.getHash([webgpu_util.UNARYOPPROGRAM, x.shape,
+      webgpu_util.ABS]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new UnaryOpProgram(x.shape, unary_op.ABS);
+    });
     return this.compileAndRun(program, [x]);
   }
 
   prelu<T extends Tensor>(x: T, alpha: T): T {
-    const program = new BinaryOpProgram(binary_op.PRELU, x.shape, alpha.shape);
+    const key = this.getHash([webgpu_util.UNARYOPPROGRAM, x.shape,
+      webgpu_util.PRELU]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new BinaryOpProgram(binary_op.PRELU, x.shape, alpha.shape);
+    });
     return this.compileAndRun(program, [x, alpha]);
   }
 
   select(condition: Tensor, a: Tensor, b: Tensor): Tensor {
-    const program = new SelectProgram(condition.rank, a.shape, a.rank);
+    const key = this.getHash([webgpu_util.SELECTPROGRAM, condition.rank,
+        a.shape, a.rank]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new SelectProgram(condition.rank, a.shape, a.rank);
+    });
     const dtype = backend_util.upcastType(a.dtype, b.dtype);
     const dataId = this.write(null /*values*/, program.outputShape, dtype);
     const output =
@@ -1116,8 +1175,13 @@ export class WebGPUBackend extends KernelBackend {
       image: Tensor4D, boxes: Tensor2D, boxIndex: Tensor1D,
       cropSize: [number, number], method: 'bilinear'|'nearest',
       extrapolationValue: number): Tensor4D {
-    const program = new CropAndResizeProgram(
+    const key = this.getHash([webgpu_util.CROPANDRESIZEPROGRAM, image.shape,
+        boxes.shape, cropSize, webgpu_util.mapCropToNum(method),
+        extrapolationValue]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new CropAndResizeProgram(
         image.shape, boxes.shape, cropSize, method, extrapolationValue);
+    });
     const dataId = this.write(null /*values*/, program.outputShape, 'float32');
     const output = engine().makeTensorFromDataId(
         dataId, program.outputShape, 'float32', this);
@@ -1134,7 +1198,10 @@ export class WebGPUBackend extends KernelBackend {
       values.fill(value as string);
       return engine().makeTensor(values, shape, dtype, this) as Tensor<R>;
     } else {
-      const program = new FillProgram(shape, value as number);
+      const key = this.getHash([webgpu_util.FILLPROGRAM, shape, value as number]);
+      const program = this.getAndSaveProgram(key, () => {
+          return new FillProgram(shape, value as number);
+      });
       const dataId = this.write(null /*values*/, program.outputShape, dtype);
       const output = engine().makeTensorFromDataId(
           dataId, program.outputShape, dtype, this);
@@ -1149,9 +1216,7 @@ export class WebGPUBackend extends KernelBackend {
   resizeBilinear(
       x: Tensor4D, newHeight: number, newWidth: number,
       alignCorners: boolean): Tensor4D {
-    //const key = 'ResizeBilinear|' + x.shape.join(',') + '|'
-    //    + newHeight + '|' + newWidth + '|' + alignCorners;
-    const key = this.getHash([webgpu_util.ResizeBilinearProgram, x.shape
+    const key = this.getHash([webgpu_util.RESIZEBILINEARPROGRAM, x.shape
         , newHeight , newWidth , alignCorners]);
     const program = this.getAndSaveProgram(key, () => {
         return new ResizeBilinearProgram(x.shape, newHeight, newWidth, alignCorners);
@@ -1177,10 +1242,17 @@ export class WebGPUBackend extends KernelBackend {
       return this.cpuBackend.transpose(x, perm);
     }
     if (x.shape.length === 2 && util.arraysEqual(perm, [1, 0])) {
-      const program = new TransposeSharedProgram(x.shape, perm);
+      const key = this.getHash([webgpu_util.TRANSPOSESHAREDPROGRAM, x.shape,
+          perm]);
+      const program = this.getAndSaveProgram(key, () => {
+          return new TransposeSharedProgram(x.shape, perm);
+      });
       return this.compileAndRun(program, [x]);
     }
-    const program = new TransposeProgram(x.shape, perm);
+    const key = this.getHash([webgpu_util.TRANSPOSEPROGRAM, x.shape, perm]);
+    const program = this.getAndSaveProgram(key, () => {
+        return new TransposeProgram(x.shape, perm);
+    });
     return this.compileAndRun(program, [x]);
   }
 
@@ -1256,9 +1328,7 @@ export class WebGPUBackend extends KernelBackend {
     // the old version while we try to understand conditions under which blocked
     // is faster.
     if (env().get('WEBGPU_MATMUL_WORK_PER_THREAD') === 0) {
-      //const key = 'MatMul|' + a.shape.join(',') + '|' + output.shape.join(',')
-      //    + '|' + transposeA + '|' + transposeB;
-      const key = this.getHash([webgpu_util.MatMulProgram, a.shape, output.shape
+      const key = this.getHash([webgpu_util.MATMULPROGRAM, a.shape, output.shape
           , transposeA , transposeB]);
       program = this.getAndSaveProgram(key, () => {
           return new MatMulProgram(
@@ -1266,12 +1336,9 @@ export class WebGPUBackend extends KernelBackend {
           transposeB);
           });
     } else {
-      //const key = 'MatMulPacked|' + a.shape.join(',') + '|' + output.shape.join(',') + '|'
-      //    + env().get('WEBGPU_MATMUL_WORK_PER_THREAD')
-      //    + '|' + transposeA + '|' + transposeB;
-      const key = this.getHash([webgpu_util.MatMulPackedProgram, a.shape, output.shape 
-          , env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number
-          , transposeA , transposeB]);
+      const key = this.getHash([webgpu_util.MATMULPACKEDPROGRAM, a.shape,
+          output.shape, env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number,
+          transposeA , transposeB]);
       program = this.getAndSaveProgram(key, () => {
           return new MatMulPackedProgram(
           a.shape, output.shape as [number, number, number],
