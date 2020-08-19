@@ -101,7 +101,8 @@ export class WebGPUBackend extends KernelBackend {
   commandQueue: GPUCommandEncoder[];
 
   private commandQueueOwnedIds = new WeakSet<DataId>();
-  private programCache: Map<number, webgpu_program.WebGPUProgram> = new Map();
+  //private programCache: Map<number, webgpu_program.WebGPUProgram> = new Map();
+  private programCache: Map<bigint, webgpu_program.WebGPUProgram> = new Map();
   private fromPixels2DContext: CanvasRenderingContext2D;
   private bufferManager: BufferManager;
   private tensorMap: DataStorage<TensorBufferInfo>;
@@ -339,7 +340,8 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   private getAndSaveProgram(
-      key: number, getProgram: () => webgpu_program.WebGPUProgram) {
+      //key: number, getProgram: () => webgpu_program.WebGPUProgram) {
+      key: bigint, getProgram: () => webgpu_program.WebGPUProgram) {
     if (!this.programCache.has(key)) {
       this.programCache.set(key, getProgram());
     }
@@ -347,41 +349,101 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   // This hash algorithm came from https://source.chromium.org/chromium/chromium/src/+/master:third_party/dawn/src/common/HashUtils.h;l=47;bpv=1;bpt=0
-  private getHash<R extends Rank>(input: Array<boolean|number|ShapeMap[R]|
-      number[]>) {
-    let hash = 0, i, l;
-    const offset = 0x9e3779b9;
-    while (input.length) {
-      // pop value from input
-      const next = input.pop();
-      if (Array.isArray(next)) {
-        for (i = 0, l = next.length; i < l; i++) {
-          hash ^= (hash << 6) + (hash >> 2) + next[i] + offset;
-        }
-        hash ^= (hash << 6) + (hash >> 2) + offset;
-      } else if (typeof(next) === 'number'){
-        if (Number.isInteger(next)){
-          hash ^= (hash << 6) + (hash >> 2) + next + offset;
-        } else {
-          const buffer = new ArrayBuffer(8);
-          const view = new DataView(buffer);
-          view.setFloat64(0, next);
-          const i0 = view.getInt32(0);
-          const i1 = view.getInt32(1);
-          hash ^= (hash << 6) + (hash >> 2) + i0 + i1 + offset;
-        }
-      } else if (typeof(next) === 'boolean'){
-        if (next){
-          hash ^= (hash << 6) + (hash >> 2) + 1 + offset;
-        } else {
-          hash ^= (hash << 6) + (hash >> 2) + 2 + offset;
-        }
-      } else {
-        throw new Error(`input keyInfo ${
-            next} is not a number or boolean or ShapeMap.`);
+  //private getHash<R extends Rank>(input: Array<boolean|number|ShapeMap[R]|
+  //    number[]>) {
+  //  let hash = 0, i, l;
+  //  const offset = 0x9e3779b9;
+  //  while (input.length) {
+  //    // pop value from input
+  //    const next = input.pop();
+  //    if (Array.isArray(next)) {
+  //      for (i = 0, l = next.length; i < l; i++) {
+  //        hash ^= (hash << 6) + (hash >> 2) + next[i] + offset;
+  //      }
+  //      hash ^= (hash << 6) + (hash >> 2) + offset;
+  //    } else if (typeof(next) === 'number'){
+  //      if (Number.isInteger(next)){
+  //        hash ^= (hash << 6) + (hash >> 2) + next + offset;
+  //      } else {
+  //        const buffer = new ArrayBuffer(8);
+  //        const view = new DataView(buffer);
+  //        view.setFloat64(0, next);
+  //        const i0 = view.getInt32(0);
+  //        const i1 = view.getInt32(1);
+  //        hash ^= (hash << 6) + (hash >> 2) + i0 + i1 + offset;
+  //      }
+  //    } else if (typeof(next) === 'boolean'){
+  //      if (next){
+  //        hash ^= (hash << 6) + (hash >> 2) + 1 + offset;
+  //      } else {
+  //        hash ^= (hash << 6) + (hash >> 2) + 2 + offset;
+  //      }
+  //    } else {
+  //      throw new Error(`input keyInfo ${
+  //          next} is not a number or boolean or ShapeMap.`);
+  //    }
+  //  }
+  //  return hash;
+  //}
+  intLength(n: number) {
+    return 1 + Math.log10(Math.abs(n) + 1) | 0;
+  }
+  private getSubHash<R extends Rank>(input: boolean|number|ShapeMap[R]|
+      number[]) {
+    let hash = 0;
+    const next = input;
+    const intLength = (n:number) => 1 + Math.log10(Math.abs(n)) |0;
+    if (Array.isArray(next)) {
+      let mul = 0;
+      for (let i = next.length - 1; i >= 0; i--) {
+        let l = intLength(next[i] as number);
+        hash += (next[i] as number + l * 10 ** l) * 10 ** mul;
+        mul += 1 + l;
       }
+    } else if (typeof(next) === 'number'){
+        if (Number.isInteger(next)){
+          let l = intLength(next);
+          hash += next + l * 10 ** l;
+        } else {
+          let str = next.toFixed(10).split('.');
+          //let str = (next + "").split('.');
+          let intPart = str[0];
+          let decPart = str[1];
+          let iL = intPart.length;
+          let iD = decPart.length;
+          
+          hash = parseInt(decPart) + iD * 10 ** iD +
+              parseInt(intPart) * 10 ** (1 + iD) +
+              iL * 10 ** (1 + iD + iL);
+        }
+    } else if (typeof(next) === 'boolean'){
+      if (next){
+        hash = 11;
+      } else {
+        hash = 10;
+      }
+    } else {
+      throw new Error(`input keyInfo ${
+          next} is not a number or boolean or ShapeMap.`);
     }
     return hash;
+  }
+  private getHash<R extends Rank>(input: Array<boolean|number|ShapeMap[R]|
+      number[]>): bigint {
+    //let result = 0n;
+    let result = BigInt(0);
+    let a = input.map(this.getSubHash);
+    //let bigMul = 0n;
+    let bigMul = BigInt(0);
+    for (let i = a.length - 1; i >= 0; i--) {
+      let l = this.intLength(a[i]);
+      let bigL = BigInt(l);
+      let bigA = BigInt(a[i]);
+      //result += bigA * 10n ** bigMul;
+      result += bigA * BigInt(10) ** bigMul;
+      bigMul += BigInt(1) + bigL;
+    }
+    return result;
   }
 
   private getTensorDType(inputs: TensorInfo[]): number[] {
