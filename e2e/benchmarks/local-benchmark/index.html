@@ -96,6 +96,7 @@ limitations under the License.
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2"></script>
 
+  <script src="../dist/tf-webgpu.js"></script>
   <script src="../model_config.js"></script>
   <script src="../benchmark_util.js"></script>
   <script src="./util.js"></script>
@@ -499,7 +500,7 @@ limitations under the License.
       parameterFolder.open();
 
       const envFolder = gui.addFolder('Environment');
-      envFolder.add(state, 'backend', ['wasm', 'webgl', 'cpu']).onChange(async backend => {
+      envFolder.add(state, 'backend', ['wasm', 'webgl', 'cpu', 'webgpu']).onChange(async backend => {
         // TODO: Failed to set backend
         await tf.setBackend(backend);
         await showFlagSettings(envFolder, state.backend);

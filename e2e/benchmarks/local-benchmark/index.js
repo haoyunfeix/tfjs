@@ -22,7 +22,8 @@ const BACKEND_FLAGS_MAP = {
   webgl: [
     'WEBGL_VERSION', 'WEBGL_CPU_FORWARD', 'WEBGL_PACK',
     'WEBGL_FORCE_F16_TEXTURES', 'WEBGL_RENDER_FLOAT32_CAPABLE'
-  ]
+  ],
+  webgpu: []
 };
 const TUNABLE_FLAG_NAME_MAP = {
   PROD: 'production mode',
