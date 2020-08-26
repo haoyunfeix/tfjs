@@ -1162,6 +1162,31 @@ export class WebGPUBackend extends KernelBackend {
     return this.compileAndRun(program, [a, b], output);
   }
 
+  fusedBatchMatMul(
+      {a, b, transposeA, transposeB, bias, activation, preluActivationWeights}:
+          backend_util.FusedBatchMatMulConfig): Tensor3D {
+    const outerShapeA = transposeA ? a.shape[2] : a.shape[1];
+    const outerShapeB = transposeB ? b.shape[1] : b.shape[2];
+    const [batch, , ] = a.shape;
+
+    const hasBias = bias != null;
+    const hasPreluActivationWeights = preluActivationWeights != null;
+    const fusedActivation =
+        activation ? this.mapActivationToShaderProgram(activation, true) : null;
+    const program = new MatMulPackedProgram(
+        a.shape, [batch, outerShapeA, outerShapeB],
+        env().get('WEBGPU_MATMUL_WORK_PER_THREAD') as number, transposeA, transposeB,
+        hasBias, fusedActivation, hasPreluActivationWeights);
+    const inputs: TensorInfo[] = [a, b];
+    if (bias) {
+      inputs.push(bias);
+    }
+    if (preluActivationWeights) {
+      inputs.push(preluActivationWeights);
+    }
+    return this.compileAndRun<Tensor3D>(program, inputs);
+  }
+
   fromPixels(
       pixels: backend_util.PixelData|ImageData|HTMLImageElement|
       HTMLCanvasElement|HTMLVideoElement,
