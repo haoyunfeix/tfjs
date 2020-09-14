@@ -24,6 +24,7 @@ import {Glslang} from '@webgpu/glslang/dist/web-devel/glslang.onefile';
 
 import {BufferManager} from './buffer_manager';
 import {ArgMinMaxProgram} from './kernels/argminmax_webgpu';
+import {AddNPackedProgram} from './kernels/addn_packed_webgpu';
 import {BinaryOpProgram} from './kernels/binary_op_webgpu';
 import * as binary_op from './kernels/binary_ops';
 import {ClipProgram} from './kernels/clip_webgpu';
@@ -524,6 +525,14 @@ export class WebGPUBackend extends KernelBackend {
     return this.compileAndRun(program, [x], output);
   }
 
+  gather<T extends Tensor>(x: T, indices: Tensor1D, axis: number): T {
+    //if (this.shouldExecuteOnCPU([x, indices])) {
+      return this.cpuBackend.gather(x, indices, axis);
+    //}
+    //const program = new GatherProgram(x.shape, indices.size, axis);
+    //return this.compileAndRun(program, [x, indices]);
+  }
+
   avgPool(x: Tensor4D, convInfo: backend_util.Conv2DInfo): Tensor4D {
     let program: Pool2DProgram|MaxPoolWithFilterSizeEqualsOneProgram;
     if (convInfo.filterHeight === 1 && convInfo.filterWidth === 1) {
@@ -582,6 +591,25 @@ export class WebGPUBackend extends KernelBackend {
       return this.cpuBackend.add(a, b);
     }
     return this.binaryOp(a, b, binary_op.ADD);
+  }
+
+  addN<T extends Tensor>(tensors: T[]): T {
+    if (tensors.length === 1) {
+      return tensors[0];
+    }
+
+    //// Limit the number of uploaded textures for optimization.
+    //if (tensors.length > env().get('WEBGL_MAX_TEXTURES_IN_SHADER')) {
+    //  const midIndex = Math.floor(tensors.length / 2);
+    //  const leftSide = this.addN(tensors.slice(0, midIndex));
+    //  const rightSide = this.addN(tensors.slice(midIndex));
+    //  return this.addN([leftSide, rightSide]);
+    //}
+
+    const shapes = tensors.map(t => t.shape);
+    const program = new AddNPackedProgram(shapes);
+    return this.compileAndRun<T>(program, tensors);
+    //return this.binaryOp(tensors[0], tensors[1], binary_op.ADD) as T;
   }
 
   subtract(a: Tensor, b: Tensor): Tensor {
@@ -1063,6 +1091,27 @@ export class WebGPUBackend extends KernelBackend {
 
   cast<T extends Tensor>(x: T, dtype: DataType): T {
     return backend_util.castTensor(x, dtype, this);
+  }
+
+  unstack(x: Tensor, axis: number): Tensor[] {
+    const num = x.shape[axis];
+    const outShape: number[] = new Array(x.rank - 1);
+    let outIndex = 0;
+    for (let i = 0; i < x.rank; i++) {
+      if (i !== axis) {
+        outShape[outIndex++] = x.shape[i];
+      }
+    }
+
+    const begin = new Array(x.rank).fill(0);
+    const size = x.shape.slice();
+    size[axis] = 1;
+    const res = new Array(num);
+    for (let i = 0; i < res.length; i++) {
+      begin[axis] = i;
+      res[i] = this.slice(x, begin, size).reshape(outShape);
+    }
+    return res;
   }
 
   transpose<T extends Tensor>(x: T, perm: number[]): T {
