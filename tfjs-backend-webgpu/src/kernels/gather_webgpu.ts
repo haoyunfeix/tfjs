@@ -27,8 +27,8 @@ export class GatherProgram implements WebGPUProgram {
   dispatchLayout: {x: number[]};
   dispatch: [number, number, number];
   variableNames: string[] = ['A', 'indices'];
-  workPerThread = 4;
-  workGroupSize: [number, number, number] = [64, 1, 1];
+  workPerThread = 1;
+  workGroupSize: [number, number, number] = [128, 1, 1];
   rank: number;
 
   constructor(aShape: number[], indicesLength: number, axis: number) {
