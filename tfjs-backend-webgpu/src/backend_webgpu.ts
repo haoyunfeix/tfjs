@@ -24,6 +24,7 @@ import {Glslang} from '@webgpu/glslang/dist/web-devel/glslang.onefile';
 
 import {BufferManager} from './buffer_manager';
 import {ArgMinMaxProgram} from './kernels/argminmax_webgpu';
+import {AddNPackedProgram} from './kernels/addn_packed_webgpu';
 import {BinaryOpProgram} from './kernels/binary_op_webgpu';
 import * as binary_op from './kernels/binary_ops';
 import {ClipProgram} from './kernels/clip_webgpu';
@@ -581,6 +582,15 @@ export class WebGPUBackend extends KernelBackend {
       return this.cpuBackend.add(a, b);
     }
     return this.binaryOp(a, b, binary_op.ADD);
+  }
+
+  addN<T extends Tensor>(tensors: T[]): T {
+    if (tensors.length === 1) {
+      return tensors[0];
+    }
+    const shapes = tensors.map(t => t.shape);
+    const program = new AddNPackedProgram(shapes);
+    return this.compileAndRun<T>(program, tensors);
   }
 
   subtract(a: Tensor, b: Tensor): Tensor {
