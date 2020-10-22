@@ -526,7 +526,6 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   gather<T extends Tensor>(x: T, indices: Tensor1D, axis: number): T {
-    this.record(`gather ${x.shape} ${indices.shape} ${axis}`);
     if (this.shouldExecuteOnCPU([x, indices])) {
       return this.cpuBackend.gather(x, indices, axis);
     }
