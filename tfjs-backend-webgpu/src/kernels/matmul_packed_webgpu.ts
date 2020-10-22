@@ -130,7 +130,9 @@ export class MatMulPackedProgram implements WebGPUProgram {
 
   constructor(
       aShape: [number, number, number], outputShape: [number, number, number],
-      workPerThread: number, transposeA = false, transposeB = false) {
+      workPerThread: number, transposeA = false, transposeB = false,
+      addBias = false, activation: string = null,
+      hasPreluActivationWeights = false) {
     const dimInner = transposeA ? aShape[1] : aShape[2];
     const dimBOuter = outputShape[2];
     const bShape = transposeB ? [outputShape[0], dimBOuter, dimInner] :
@@ -190,7 +192,36 @@ export class MatMulPackedProgram implements WebGPUProgram {
             B[col * dimInner + row] : 0`;
     }
 
+    let activationSnippet = '', applyActivationSnippet = '';
+    if (activation) {
+      if (hasPreluActivationWeights) {
+        activationSnippet = `float activation(float a) {
+              float b = getPreluActivationWeightsAtOutCoords();
+              ${activation}
+            }`;
+      } else {
+        activationSnippet = `
+              float activation(float a) {
+                ${activation}
+              }
+            `;
+      }
+
+      applyActivationSnippet = `value = activation(value);`;
+    }
+
+    const addBiasSnippet = addBias ? 'value += getBiasAtOutCoords();' : '';
+    if (addBias) {
+      this.variableNames.push('bias');
+    }
+
+    if (hasPreluActivationWeights) {
+      this.variableNames.push('preluActivationWeights');
+    }
+
     this.userCode = `
+      ${activationSnippet}
+
       int dimAOuter = ${transposeA === true ? `${aShape[2]}` : `${aShape[1]}`};
       int dimInner = ${transposeA === true ? `${aShape[1]}` : `${aShape[2]}`};
       int dimBOuter = ${transposeB === true ? `${bShape[1]}` : `${bShape[2]}`};
@@ -207,6 +238,8 @@ export class MatMulPackedProgram implements WebGPUProgram {
       }
 
       void mm_write(int row, int col, float value) {
+        ${addBiasSnippet}
+        ${applyActivationSnippet}
         setOutput(row * dimBOuter + col, value);
       }
 
@@ -215,6 +248,6 @@ export class MatMulPackedProgram implements WebGPUProgram {
       }
     `;
     this.shaderKey = `matmulpacked${this.workPerThread}${fitA}${fitB}${
-        transposeA}${transposeB}`;
+        transposeA}${transposeB}${addBias}${activation}${hasPreluActivationWeights}`;
   }
 }
