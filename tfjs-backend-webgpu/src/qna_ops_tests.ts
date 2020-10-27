@@ -406,6 +406,60 @@ function testMax(aShape: Array<number>, axis: number) {
     testTranspose([1,384,32],[2,0,1]);
     testTranspose([1,384,4,32],[0,2,1,3]);
 
+  function testSoftMax(aShape: Array<number>, perm: number) {
+  it(`transpose aShape:${aShape}`, async () => {
+    const doTest = async (aShape: Array<number>, perm: number) => {
+      const arrA = new Array(nRep).fill(0);
+      const res = new Array(nRep);
+      const a = arrA.map((x) => tf.randomNormal(aShape));
+      await time(
+        (r) => {
+          res[r] = tf.softmax(a[r], perm);
+          return [];
+        },
+        async () => {
+          await res[res.length - 1].data();
+          for (const t of res) {
+            t.dispose();
+          }
+        },
+        false, nTrail, nRep, `add aShape:${aShape}`);
+      a.forEach(t => t.dispose());
+    };
+    await doTest(aShape, perm);
+  });
+  }
+    testSoftMax([1,4,384,384],3);
+
+  function testGather(aShape: Array<number>, bShape: Array<number>, perm: number) {
+  fit(`transpose aShape:${aShape}`, async () => {
+    const doTest = async (aShape: Array<number>, bShape: Array<number>, perm: number) => {
+      const arrA = new Array(nRep).fill(0);
+      const arrB = new Array(nRep).fill(0);
+      const res = new Array(nRep);
+      const a = arrA.map((x) => tf.randomNormal(aShape));
+      const b = arrB.map((x) => tf.randomNormal(bShape,null,null,'int32'));
+      await time(
+        (r) => {
+          res[r] = tf.gather(a[r], b[r],perm);
+          return [];
+        },
+        async () => {
+          await res[res.length - 1].data();
+          for (const t of res) {
+            t.dispose();
+          }
+        },
+        false, nTrail, nRep, `add aShape:${aShape}`);
+      a.forEach(t => t.dispose());
+      b.forEach(t => t.dispose());
+    };
+    await doTest(aShape, bShape, perm);
+  });
+  }
+    testGather([2,512],[384],0);
+    testGather([30522,128],[384],0);
+
   function download(content:any, fileName:any, contentType:any) {
     return new Promise(resolve => {
       const jsonData = JSON.stringify(content);
