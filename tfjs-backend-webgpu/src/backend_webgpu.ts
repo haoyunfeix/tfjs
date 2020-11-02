@@ -121,6 +121,12 @@ export class WebGPUBackend extends KernelBackend {
   private cpuBackend: KernelBackend;
   //private r: {[key: string]: number};
 
+  private cc = 0;
+  //private nn = 7091
+  private nn = 17091
+  private querySet:GPUQuerySet;
+  private dstBuffer: GPUBuffer;
+  private ticks:number;
   constructor(device: GPUDevice, glslang: Glslang) {
     super();
     this.binaryCache = {};
@@ -129,9 +135,18 @@ export class WebGPUBackend extends KernelBackend {
     this.commandQueue = [];
     this.glslang = glslang;
     //this.r = {};
+    this.ticks = 0;
 
     this.bufferManager = new BufferManager(this.device);
     this.tensorMap = new DataStorage(this, engine());
+    this.querySet = this.device.createQuerySet({
+      type: "timestamp",
+      count: this.nn*2,
+    });
+    this.dstBuffer = this.device.createBuffer({
+      size: this.nn*16,
+      usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE,
+    });
   }
 
   floatPrecision(): 32 {
@@ -445,35 +460,32 @@ export class WebGPUBackend extends KernelBackend {
     });
 
     const shouldTimeProgram = this.activeTimers != null;
-    //let query: CPUTimerQuery;
-    //if (shouldTimeProgram) {
-    //  query = this.startTimer();
-    //}
+    let query: CPUTimerQuery;
+    if (shouldTimeProgram) {
+      query = this.startTimer();
+    }
 
     // Creating bind groups on the fly should never be a bottleneck.
-    const querySet = this.device.createQuerySet({
-      type: "timestamp",
-      count: 2,
-    });
-    const dstBuffer = this.device.createBuffer({
-      size: 16,
-      usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE,
-    });
     const bg = webgpu_program.makeBindGroup(
         this.device, bindGroupLayout, inputs.map(t => this.tensorToBinding(t)),
         this.tensorToBinding(output), uniforms);
 
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginComputePass();
+    //pass.writeTimestamp(this.querySet, 0);
+    pass.writeTimestamp(this.querySet, this.cc);
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bg);
-    pass.writeTimestamp(querySet, 0);
     pass.dispatch(
         program.dispatch[0], program.dispatch[1], program.dispatch[2]);
-    pass.writeTimestamp(querySet, 1);
+    //pass.writeTimestamp(this.querySet, 1);
+    pass.writeTimestamp(this.querySet, this.cc+1);
     pass.endPass();
 
-    encoder.resolveQuerySet(querySet, 0, 2, dstBuffer, 0);
+    //encoder.resolveQuerySet(this.querySet, 0, 2, this.dstBuffer, 0);
+    encoder.resolveQuerySet(this.querySet, this.cc, 2, this.dstBuffer, 8*this.cc);
+    ++this.cc;
+    ++this.cc;
 
     this.commandQueue.push(encoder);
 
@@ -493,14 +505,15 @@ export class WebGPUBackend extends KernelBackend {
 
     if (env().get('WEBGPU_IMMEDIATE_EXECUTION_ENABLED')) {
       this.submitQueue();
-      console.log(this.getResult(dstBuffer, program.constructor.name));
+      //console.log(this.getResult(this.dstBuffer, program.constructor.name));
+      //this.getResult();
     }
 
     if (shouldTimeProgram) {
-      //query = this.endTimer(query);
+      query = this.endTimer(query);
       this.activeTimers.push(
-          //{name: program.constructor.name, query: this.getQueryTime(query)});
-          {name: program.constructor.name, query: this.getResult(dstBuffer, program.constructor.name)});
+          {name: program.constructor.name, query: this.getQueryTime(query)});
+          //{name: program.constructor.name, query: this.getResult(this.dstBuffer, program.constructor.name)});
     }
     return output as {} as K;
   }
@@ -512,15 +525,19 @@ export class WebGPUBackend extends KernelBackend {
   //  }
   //  console.log(this.r);
   //}
-  private async getResult(buf: GPUBuffer, name: string) {
+  //async getResult(buf: GPUBuffer, name: string) {
+  async getResult() {
+    let buf = this.dstBuffer;
     const dst = this.device.createBuffer({
-      size: 40,
+      //size: 40,
+      size: 16*this.nn,
       usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
     });
 
 
     const c = this.device.createCommandEncoder();
-    c.copyBufferToBuffer(buf, 0, dst, 0, 16);
+    //c.copyBufferToBuffer(buf, 0, dst, 0, 16);
+    c.copyBufferToBuffer(buf, 0, dst, 0, 16*this.nn);
 
     this.device.defaultQueue.submit([c.finish()]);
     await dst.mapAsync(GPUMapMode.READ);
@@ -528,10 +545,15 @@ export class WebGPUBackend extends KernelBackend {
     const arrayBuf = new BigUint64Array(dst.getMappedRange());
     //console.log(arrayBuf[0]);
     //console.log(arrayBuf[1]);
+    for(let i = 0;i<arrayBuf.length;i=i+2){
+      //console.log(arrayBuf[i+1] - arrayBuf[i]);
+      this.ticks += Number(arrayBuf[i+1] - arrayBuf[i]);
+    }
+    console.log(this.ticks);
     
-    const time = Number(arrayBuf[1] - arrayBuf[0])*1000/12000048;
+    //const time = Number(arrayBuf[1] - arrayBuf[0])*1000/12000048;
     //this.record(name, time);
-    console.log(time);
+    //console.log(time);
 
     // timestamp in gpu ticks, need to convert to time using gpu frequency
     // const timeDelta = arrayBuf[1] - arrayBuf[0];
