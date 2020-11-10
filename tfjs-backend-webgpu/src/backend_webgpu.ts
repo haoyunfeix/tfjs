@@ -19,8 +19,9 @@
 
 import './flags_webgpu';
 
-import {backend_util, DataStorage, DataType, div, engine, env, KernelBackend, Rank, RecursiveArray, ShapeMap, slice_util, sumOutType, Tensor, Tensor1D, Tensor2D, Tensor3D, Tensor4D, TensorInfo, TimingInfo, util} from '@tensorflow/tfjs-core';
+import {backend_util, DataStorage, DataType, div, engine, env, KernelBackend, Rank, RecursiveArray, ShapeMap, slice_util, sumOutType, Tensor, Tensor1D, Tensor2D, Tensor3D, Tensor4D, TensorInfo, TimingInfo, TypedArray, util} from '@tensorflow/tfjs-core';
 import {Glslang} from '@webgpu/glslang/dist/web-devel/glslang.onefile';
+import {multiplyImpl as cpuMultiply, addImpl as cpuAdd} from '@tensorflow/tfjs-backend-cpu/dist/shared';
 
 import {BufferManager} from './buffer_manager';
 import {ArgMinMaxProgram} from './kernels/argminmax_webgpu';
@@ -631,7 +632,19 @@ export class WebGPUBackend extends KernelBackend {
 
   add(a: Tensor, b: Tensor): Tensor {
     if (this.shouldExecuteOnCPU([a, b])) {
-      return this.cpuBackend.add(a, b);
+      const aData = this.tensorMap.get(a.dataId);
+      const bData = this.tensorMap.get(b.dataId);
+      const [outValues, outShape] = cpuAdd(
+          a.shape, b.shape, aData.values as TypedArray,
+          bData.values as TypedArray, 'float32');
+
+      const dataId = this.write(null /*values*/, outShape, 'float32');
+      const output =
+          engine().makeTensorFromDataId(dataId, outShape, 'float32', this);
+      //const out = this.makeTensorInfo(outShape, 'float32');
+      const outData = this.tensorMap.get(dataId);
+      outData.values = outValues;
+      return output;
     }
     return this.binaryOp(a, b, BinaryOpType.ADD);
   }
@@ -956,7 +969,19 @@ export class WebGPUBackend extends KernelBackend {
 
   multiply(a: Tensor, b: Tensor): Tensor {
     if (this.shouldExecuteOnCPU([a, b])) {
-      return this.cpuBackend.multiply(a, b);
+      const aData = this.tensorMap.get(a.dataId);
+      const bData = this.tensorMap.get(b.dataId);
+      const [outValues, outShape] = cpuMultiply(
+          a.shape, b.shape, aData.values as TypedArray,
+          bData.values as TypedArray, 'float32');
+
+      const dataId = this.write(null /*values*/, outShape, 'float32');
+      const output =
+          engine().makeTensorFromDataId(dataId, outShape, 'float32', this);
+      //const out = this.makeTensorInfo(outShape, 'float32');
+      const outData = this.tensorMap.get(dataId);
+      outData.values = outValues;
+      return output;
     }
     return this.binaryOp(a, b, BinaryOpType.MUL);
   }
