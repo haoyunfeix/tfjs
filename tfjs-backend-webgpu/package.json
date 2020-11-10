@@ -4,7 +4,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "jsnext:main": "dist/tf-webgpu.esm.js",
-  "module": "dist/tf-webgpu.esm.js",
+  "module": "dist/tf-webgpu.es2017.js",
   "unpkg": "dist/tf-webgpu.min.js",
   "jsdelivr": "dist/tf-webgpu.min.js",
   "scripts": {
