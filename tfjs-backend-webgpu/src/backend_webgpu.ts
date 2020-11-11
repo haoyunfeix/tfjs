@@ -510,6 +510,7 @@ export class WebGPUBackend extends KernelBackend {
           {name: program.constructor.name, query: this.getQueryTime(query)});
     }
     return output as {} as K;
+  }
   async getResult() {
     let buf = this.dstBuffer;
     const dst = this.device.createBuffer({
