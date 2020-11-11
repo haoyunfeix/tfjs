@@ -19,8 +19,9 @@
 
 import './flags_webgpu';
 
-import {backend_util, DataStorage, DataType, div, engine, env, KernelBackend, Rank, RecursiveArray, ShapeMap, slice_util, sumOutType, Tensor, Tensor1D, Tensor2D, Tensor3D, Tensor4D, TensorInfo, TimingInfo, util} from '@tensorflow/tfjs-core';
+import {backend_util, DataStorage, DataType, div, engine, env, KernelBackend, Rank, RecursiveArray, ShapeMap, slice_util, sumOutType, Tensor, Tensor1D, Tensor2D, Tensor3D, Tensor4D, TensorInfo, TimingInfo, TypedArray, util} from '@tensorflow/tfjs-core';
 import {Glslang} from '@webgpu/glslang/dist/web-devel/glslang.onefile';
+import {multiplyImpl as cpuMultiply, addImpl as cpuAdd} from '@tensorflow/tfjs-backend-cpu/dist/shared';
 
 import {BufferManager} from './buffer_manager';
 import {ArgMinMaxProgram} from './kernels/argminmax_webgpu';
@@ -119,6 +120,10 @@ export class WebGPUBackend extends KernelBackend {
   private downloadWaitMs = 0;
   private cpuBackend: KernelBackend;
 
+  private cc = 0;
+  private nn = 7092
+  private querySet:GPUQuerySet;
+  private dstBuffer: GPUBuffer;
   constructor(device: GPUDevice, glslang: Glslang) {
     super();
     this.binaryCache = {};
@@ -129,6 +134,14 @@ export class WebGPUBackend extends KernelBackend {
 
     this.bufferManager = new BufferManager(this.device);
     this.tensorMap = new DataStorage(this, engine());
+    this.querySet = this.device.createQuerySet({
+      type: "timestamp",
+      count: this.nn*2,
+    });
+    this.dstBuffer = this.device.createBuffer({
+      size: this.nn*16,
+      usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE,
+    });
   }
 
   floatPrecision(): 32 {
@@ -138,7 +151,7 @@ export class WebGPUBackend extends KernelBackend {
   flushDisposalQueue() {
     this.tensorDisposalQueue.forEach(d => {
       this.maybeReleaseBuffer(d);
-      this.tensorMap.delete(d);
+      //this.tensorMap.delete(d);
     });
     this.uniformDisposalQueue.forEach(
         d => this.bufferManager.releaseBuffer(d.buffer, d.byteSize, d.usage));
@@ -159,7 +172,7 @@ export class WebGPUBackend extends KernelBackend {
       this.maybeReleaseBuffer(dataId);
     }
 
-    this.tensorMap.delete(dataId);
+    //this.tensorMap.delete(dataId);
   }
 
   memory(): WebGPUMemoryInfo {
@@ -381,8 +394,9 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   async getQueryTime(query: CPUTimerQuery): Promise<number> {
-    const timerQuery = query;
-    return timerQuery.endMs - timerQuery.startMs;
+    return this.getResult(); // --ForQuery
+    //const timerQuery = query;
+    //return timerQuery.endMs - timerQuery.startMs;
   }
 
   uploadToGPU(dataId: DataId): void {
@@ -452,11 +466,24 @@ export class WebGPUBackend extends KernelBackend {
 
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginComputePass();
+    if (shouldTimeProgram) {
+      pass.writeTimestamp(this.querySet, this.cc); // --ForQuery
+    }
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bg);
     pass.dispatch(
         program.dispatch[0], program.dispatch[1], program.dispatch[2]);
+    if (shouldTimeProgram) {
+      pass.writeTimestamp(this.querySet, this.cc+1); // --ForQuery
+    }
     pass.endPass();
+
+    if (shouldTimeProgram) {
+      encoder.resolveQuerySet(this.querySet, this.cc, 2, this.dstBuffer, 8*this.cc); // --ForQuery
+      ++this.cc; // --ForQuery
+      ++this.cc; // --ForQuery
+    }
+
     this.commandQueue.push(encoder);
 
     inputs.forEach(input => {
@@ -483,6 +510,25 @@ export class WebGPUBackend extends KernelBackend {
           {name: program.constructor.name, query: this.getQueryTime(query)});
     }
     return output as {} as K;
+  }
+  async getResult() {
+    let buf = this.dstBuffer;
+    const dst = this.device.createBuffer({
+      size: 16,
+      //size: 16*this.nn,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+
+
+    const c = this.device.createCommandEncoder();
+    c.copyBufferToBuffer(buf, 8*(this.cc-2), dst, 0, 16);
+    this.device.defaultQueue.submit([c.finish()]);
+    await dst.mapAsync(GPUMapMode.READ);
+    // @ts-ignore
+    const arrayBuf = new BigUint64Array(dst.getMappedRange());
+    const tickDelta = Number((arrayBuf[1] - arrayBuf[0]));
+    dst.destroy();
+    return tickDelta * 1000 / 12000048;
   }
 
   private makeUniforms(data: Uint32Array|
@@ -587,7 +633,19 @@ export class WebGPUBackend extends KernelBackend {
 
   add(a: Tensor, b: Tensor): Tensor {
     if (this.shouldExecuteOnCPU([a, b])) {
-      return this.cpuBackend.add(a, b);
+      const aData = this.tensorMap.get(a.dataId);
+      const bData = this.tensorMap.get(b.dataId);
+      const [outValues, outShape] = cpuAdd(
+          a.shape, b.shape, aData.values as TypedArray,
+          bData.values as TypedArray, 'float32');
+
+      const dataId = this.write(null /*values*/, outShape, 'float32');
+      const output =
+          engine().makeTensorFromDataId(dataId, outShape, 'float32', this);
+      //const out = this.makeTensorInfo(outShape, 'float32');
+      const outData = this.tensorMap.get(dataId);
+      outData.values = outValues;
+      return output;
     }
     return this.binaryOp(a, b, BinaryOpType.ADD);
   }
@@ -912,7 +970,19 @@ export class WebGPUBackend extends KernelBackend {
 
   multiply(a: Tensor, b: Tensor): Tensor {
     if (this.shouldExecuteOnCPU([a, b])) {
-      return this.cpuBackend.multiply(a, b);
+      const aData = this.tensorMap.get(a.dataId);
+      const bData = this.tensorMap.get(b.dataId);
+      const [outValues, outShape] = cpuMultiply(
+          a.shape, b.shape, aData.values as TypedArray,
+          bData.values as TypedArray, 'float32');
+
+      const dataId = this.write(null /*values*/, outShape, 'float32');
+      const output =
+          engine().makeTensorFromDataId(dataId, outShape, 'float32', this);
+      //const out = this.makeTensorInfo(outShape, 'float32');
+      const outData = this.tensorMap.get(dataId);
+      outData.values = outValues;
+      return output;
     }
     return this.binaryOp(a, b, BinaryOpType.MUL);
   }
