@@ -80,7 +80,26 @@ const passage = `Nikola Tesla (/ˈtɛslə/;[2] Serbo-Croatian: [nǐkola têsla];
       electricity supply system.[7]`;
 const question = "who is Tesla?";
 const benchmarks = {
-  'posenet_resNet_q4_s32_input224': {
+  'posenet_resNet_q4_s32_input224_tensor': {
+    load: async () => {
+      const resNetConfig ={
+        architecture: 'ResNet50',
+        outputStride: 32,
+        inputResolution: 224,
+        quantBytes: 4,
+        modelUrl: 'savedmodel/posenet/resnet50/float/model-stride32.json'
+      };
+      const model = await posenet.load(resNetConfig);
+      return model;
+    },
+    predictFunc: () => {
+      const zeros = tf.zeros([224, 224, 3]);
+      return async model => {
+        return model.estimateSinglePose(zeros);
+      }
+    }
+  },
+  'posenet_resNet_q4_s32_input224_image': {
     load: async () => {
       const resNetConfig ={
         architecture: 'ResNet50',
@@ -96,12 +115,31 @@ const benchmarks = {
     predictFunc: () => {
       const zeros = tf.zeros([224, 224, 3]);
       return async model => {
-        //return model.estimateSinglePose(model.image);
+        return model.estimateSinglePose(model.image);
+      }
+    }
+  },
+  'posenet_mobileNet_q2_m75_s16_input513_tensor': {
+    load: async () => {
+      const mobileNetConfig = {
+        architecture: 'MobileNetV1',
+        outputStride: 16,
+        inputResolution: 513,
+        multiplier: 0.75,
+        quantBytes: 2,
+        modeUrl: 'savedmodel/posenet/mobilenet/quant2/075/model-stride16.json'
+      };
+      const model = await posenet.load(mobileNetConfig);
+      return model;
+    },
+    predictFunc: () => {
+      const zeros = tf.zeros([513, 513, 3]);
+      return async model => {
         return model.estimateSinglePose(zeros);
       }
     }
   },
-  'posenet_mobileNet_q2_m75_s16_input513': {
+  'posenet_mobileNet_q2_m75_s16_input513_image': {
     load: async () => {
       const mobileNetConfig = {
         architecture: 'MobileNetV1',
