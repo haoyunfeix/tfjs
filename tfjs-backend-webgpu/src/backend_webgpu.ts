@@ -122,7 +122,7 @@ export class WebGPUBackend extends KernelBackend {
   private cpuBackend: KernelBackend;
 
   private cc = 0;
-  private nn = 7092
+  private nn = 101;
   private querySet:GPUQuerySet;
   private dstBuffer: GPUBuffer;
   constructor(device: GPUDevice, glslang: Glslang) {
@@ -392,8 +392,8 @@ export class WebGPUBackend extends KernelBackend {
     return query;
   }
 
-  async getQueryTime(query: CPUTimerQuery): Promise<number> {
-    return this.getResult(); // --ForQuery
+  async getQueryTime(counter: number): Promise<number> {
+    return this.getResult(counter); // --ForQuery
     //const timerQuery = query;
     //return timerQuery.endMs - timerQuery.startMs;
   }
@@ -478,7 +478,10 @@ export class WebGPUBackend extends KernelBackend {
     pass.endPass();
 
     if (shouldTimeProgram) {
-      encoder.resolveQuerySet(this.querySet, this.cc, 2, this.dstBuffer, 8*this.cc); // --ForQuery
+    //  encoder.resolveQuerySet(this.querySet, this.cc, 2, this.dstBuffer, 8*this.cc); // --ForQuery
+      if(this.cc === (this.nn-1)*2) {
+        encoder.resolveQuerySet(this.querySet, 0, this.cc, this.dstBuffer, 0); // --ForQuery
+      }
       ++this.cc; // --ForQuery
       ++this.cc; // --ForQuery
     }
@@ -506,12 +509,15 @@ export class WebGPUBackend extends KernelBackend {
     if (shouldTimeProgram) {
       query = this.endTimer(query);
       this.activeTimers.push(
-          {name: program.constructor.name, query: this.getQueryTime(query)});
+          {name: program.constructor.name, query: this.getQueryTime(this.cc -2)});
     }
     return output as {} as K;
   }
-  async getResult() {
+  async getResult(counter: number) {
     let buf = this.dstBuffer;
+    await util.repeatedTry(() => {
+      return (this.cc === this.nn * 2);
+    });
     const dst = this.device.createBuffer({
       size: 16,
       //size: 16*this.nn,
@@ -520,7 +526,7 @@ export class WebGPUBackend extends KernelBackend {
 
 
     const c = this.device.createCommandEncoder();
-    c.copyBufferToBuffer(buf, 8*(this.cc-2), dst, 0, 16);
+    c.copyBufferToBuffer(buf, 8*counter, dst, 0, 16);
     this.device.defaultQueue.submit([c.finish()]);
     await dst.mapAsync(GPUMapMode.READ);
     // @ts-ignore
