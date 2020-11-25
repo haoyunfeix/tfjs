@@ -467,23 +467,23 @@ export class WebGPUBackend extends KernelBackend {
     const pass = encoder.beginComputePass();
     if (shouldTimeProgram) {
       pass.writeTimestamp(this.querySet, this.cc); // --ForQuery
+      ++this.cc; // --ForQuery
     }
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bg);
     pass.dispatch(
         program.dispatch[0], program.dispatch[1], program.dispatch[2]);
     if (shouldTimeProgram) {
-      pass.writeTimestamp(this.querySet, this.cc+1); // --ForQuery
+      pass.writeTimestamp(this.querySet, this.cc); // --ForQuery
+      ++this.cc; // --ForQuery
     }
     pass.endPass();
 
     if (shouldTimeProgram) {
     //  encoder.resolveQuerySet(this.querySet, this.cc, 2, this.dstBuffer, 8*this.cc); // --ForQuery
-      if(this.cc === (this.nn-1)*2) {
+      if(this.cc === this.nn * 2) {
         encoder.resolveQuerySet(this.querySet, 0, this.cc, this.dstBuffer, 0); // --ForQuery
       }
-      ++this.cc; // --ForQuery
-      ++this.cc; // --ForQuery
     }
 
     this.commandQueue.push(encoder);
