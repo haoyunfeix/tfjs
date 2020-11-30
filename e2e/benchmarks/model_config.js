@@ -74,7 +74,53 @@ const sentences = [
   'what is the forecast for here at tea time',
 ];
 
+const passage = `Nikola Tesla (/ˈtɛslə/;[2] Serbo-Croatian: [nǐkola têsla]; Serbian Cyrillic: Никола Тесла;[a] 10
+      July 1856 – 7 January 1943) was a Serbian-American[4][5][6] inventor, electrical engineer, mechanical engineer,
+      and futurist who is best known for his contributions to the design of the modern alternating current (AC)
+      electricity supply system.[7]`;
+const question = "who is Tesla?";
 const benchmarks = {
+  'posenet_resNet_q4_s32_input224': {
+    load: async () => {
+      const resNetConfig ={
+        architecture: 'ResNet50',
+        outputStride: 32,
+        inputResolution: 224,
+        quantBytes: 4,
+        modelUrl: 'savedmodel/posenet/resnet50/float/model-stride32.json'
+      };
+      const model = await posenet.load(resNetConfig);
+      model.image = await loadImage('tennis_standing.jpg');
+      return model;
+    },
+    predictFunc: () => {
+      const zeros = tf.zeros([224, 224, 3]);
+      return async model => {
+        //return model.estimateSinglePose(model.image);
+        return model.estimateSinglePose(zeros);
+      }
+    }
+  },
+  'posenet_mobileNet_q2_m75_s16_input513': {
+    load: async () => {
+      const mobileNetConfig = {
+        architecture: 'MobileNetV1',
+        outputStride: 16,
+        inputResolution: 513,
+        multiplier: 0.75,
+        quantBytes: 2,
+        modeUrl: 'savedmodel/posenet/mobilenet/quant2/075/model-stride16.json'
+      };
+      const model = await posenet.load(mobileNetConfig);
+      model.image = await loadImage('tennis_standing.jpg');
+      return model;
+    },
+    predictFunc: () => {
+      return async model => {
+        return model.estimateSinglePose(model.image);
+      }
+    }
+  },
   'mobilenet_v2': {
     type: 'GraphModel',
     load: async () => {
@@ -239,6 +285,18 @@ const benchmarks = {
         const x = tf.tensor4d(mySpectrogramData, [1].concat(shape.slice(1)));
         return await model.recognize(x);
       }
+    }
+  },
+  'qna': {
+    type: 'GraphModel',
+    load: async () => {
+      const model = await qna.load();
+      return model;
+    },
+    predictFunc: () => {
+      return async model => {
+        return model.findAnswers(question, passage);
+      };
     }
   },
   'custom': {
