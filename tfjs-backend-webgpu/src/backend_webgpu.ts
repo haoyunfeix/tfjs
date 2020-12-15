@@ -19,14 +19,15 @@
 
 import './flags_webgpu';
 
-import {backend_util, DataStorage, DataType, div, engine, env, KernelBackend, Rank, RecursiveArray, ShapeMap, slice_util, sumOutType, Tensor, Tensor1D, Tensor2D, Tensor3D, Tensor4D, TensorInfo, TimingInfo, util} from '@tensorflow/tfjs-core';
+import {backend_util, DataStorage, DataType, div, engine, env, KernelBackend, Rank, RecursiveArray, ShapeMap, slice_util, sumOutType, Tensor, Tensor1D, Tensor2D, Tensor3D, Tensor4D, TensorInfo, TimingInfo, TypedArray, util} from '@tensorflow/tfjs-core';
 import {Glslang} from '@webgpu/glslang/dist/web-devel/glslang.onefile';
+import {multiplyImpl as cpuMultiply, addImpl as cpuAdd} from '@tensorflow/tfjs-backend-cpu/dist/shared';
 
 import {BufferManager} from './buffer_manager';
 import {ArgMinMaxProgram} from './kernels/argminmax_webgpu';
+import {AddNPackedProgram} from './kernels/addn_packed_webgpu';
 import {BinaryOpProgram} from './kernels/binary_op_webgpu';
 import {BinaryOpType, getBinaryOpString, getBinaryProgram} from './kernels/binary_ops';
-import {ClipVec4Program} from './kernels/clip_vec4_webgpu';
 import {ClipProgram} from './kernels/clip_webgpu';
 import {ConcatProgram} from './kernels/concat_webgpu';
 import {Conv2DMMVec4Program} from './kernels/conv2d_mm_vec4_webgpu';
@@ -36,6 +37,7 @@ import {CropAndResizeProgram} from './kernels/crop_and_resize_webgpu';
 import {DepthwiseConv2DProgram} from './kernels/depthwise_conv2d_webgpu';
 import {FillProgram} from './kernels/fill_webgpu';
 import {FromPixelsProgram} from './kernels/FromPixels_utils/from_pixels_webgpu';
+import {GatherProgram} from './kernels/gather_webgpu';
 import {Im2ColProgram} from './kernels/im2col_webgpu';
 import {MatMulPackedVec4Program} from './kernels/matmul_packed_vec4_webgpu';
 import {MatMulPackedProgram} from './kernels/matmul_packed_webgpu';
@@ -96,6 +98,8 @@ export interface WebGPUTimingInfo extends TimingInfo {
 // off execution to the CPU.
 const CPU_HANDOFF_SIZE_THRESHOLD = 128;
 
+const GPU_TIMESTAMP_FREQUENCY = 12000048;
+
 const DEFAULT_GPUBUFFER_USAGE =
     GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST;
 
@@ -122,7 +126,17 @@ export class WebGPUBackend extends KernelBackend {
   private uploadWaitMs = 0;
   private downloadWaitMs = 0;
   private cpuBackend: KernelBackend;
+
+  private querySetSize = 600;  // Should change it to a bigger value if the
+                               // queried ops number is larger than 300.
+  private opsCounter = 0;
+  private modelQuerySet: GPUQuerySet;
+  private modelQueryBuffer: GPUBuffer;
   private querySet: GPUQuerySet;
+  private queryBuffer: GPUBuffer;
+  private readCounter = 0;
+  private gpuTime: number[];
+  private cpuTimeline: number[];
 
   constructor(device: GPUDevice, glslang: Glslang, supportTimeQuery = false) {
     super();
@@ -135,12 +149,24 @@ export class WebGPUBackend extends KernelBackend {
 
     this.bufferManager = new BufferManager(this.device);
     this.tensorMap = new DataStorage(this, engine());
-    if (this.supportTimeQuery) {
-      this.querySet = this.device.createQuerySet({
-        type: 'timestamp',
-        count: 2,
-      });
-    }
+    this.gpuTime = [];
+    this.cpuTimeline = [];
+    this.modelQuerySet = this.device.createQuerySet({
+      type: 'timestamp',
+      count: this.querySetSize,
+    });
+    this.modelQueryBuffer = this.device.createBuffer({
+      size: this.querySetSize * 8,
+      usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE,
+    });
+    this.querySet = this.device.createQuerySet({
+      type: 'timestamp',
+      count: this.querySetSize,
+    });
+    this.queryBuffer = this.device.createBuffer({
+      size: this.querySetSize * 8,
+      usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE,
+    });
   }
 
   floatPrecision(): 32 {
@@ -248,6 +274,56 @@ export class WebGPUBackend extends KernelBackend {
       // Data is on the CPU.
       return info.values;
     }
+
+    if (this.activeTimers != null) {
+      this.opsCounter = 0;
+    } else if (
+        this.activeTimers == null &&
+        env().getBool('WEBGPU_ENABLE_TIMESTAMP_QUERY')) {
+      this.readCounter++;
+      if (this.opsCounter !== 0) {
+        const resolveEncoder = this.device.createCommandEncoder();
+        // tslint:disable-next-line:no-any
+        (resolveEncoder as any)
+            .resolveQuerySet(
+                this.modelQuerySet, 0, this.opsCounter, this.modelQueryBuffer,
+                0);
+        this.commandQueue.push(resolveEncoder);
+        this.submitQueue();
+
+        const gpuTimeline = await this.getEachOpQueryResult();
+        const wholeTickDelta =
+            Number((gpuTimeline[gpuTimeline.length - 1] - gpuTimeline[0]));
+        const gpuTotalTime = (wholeTickDelta * 1000 / GPU_TIMESTAMP_FREQUENCY);
+        this.gpuTime.push(gpuTotalTime);
+        if (this.readCounter ===
+            (env().get('WEBGPU_PRINT_QUERY_RESULT_AT_ITERATION') as number)) {
+          let totalTime = 0;
+          for (let i = 0; i < gpuTimeline.length / 2; i++) {
+            const tickDelta =
+                Number((gpuTimeline[i * 2 + 1] - gpuTimeline[i * 2]));
+            const exe = (tickDelta * 1000 / GPU_TIMESTAMP_FREQUENCY);
+            totalTime += exe;
+          }
+
+          console.log(`----gpu: ${gpuTotalTime}, ops sum: ${totalTime}`);
+          console.log('gpu timeline');
+          console.log(gpuTimeline);
+          console.log('cpu timeline');
+          console.log(this.cpuTimeline);
+
+          for (let i = 0; i < this.gpuTime.length; i++) {
+            console.log(`gpu: ${this.gpuTime[i]}`);
+          }
+          this.readCounter = 0;
+          this.gpuTime = [];
+        }
+
+        this.cpuTimeline = [];
+        this.opsCounter = 0;
+      }
+    }
+
     const staging = this.acquireBuffer(
         info.bufferInfo.byteSize,
         GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ);
@@ -390,13 +466,8 @@ export class WebGPUBackend extends KernelBackend {
     return query;
   }
 
-  async getQueryTime(query: CPUTimerQuery | GPUQuerySet): Promise<number> {
-    if (this.supportTimeQuery) {
-      return this.getTimeFromQuerySet(query as GPUQuerySet);
-    } else {
-      const timerQuery = query as CPUTimerQuery;
-      return timerQuery.endMs - timerQuery.startMs;
-    }
+  async getQueryTime(counter: number): Promise<number> {
+    return this.getQueryResultAtIndex(counter);
   }
 
   uploadToGPU(dataId: DataId): void {
@@ -419,6 +490,10 @@ export class WebGPUBackend extends KernelBackend {
   public compileAndRun<K extends TensorInfo>(
       program: webgpu_program.WebGPUProgram, inputs: TensorInfo[],
       output?: TensorInfo, programUniforms?: number[]): K {
+    if (this.activeTimers == null &&
+        env().getBool('WEBGPU_ENABLE_TIMESTAMP_QUERY')) {
+      this.cpuTimeline.push(performance.now());
+    }
     if (output == null) {
       output = this.makeOutputArray(program.outputShape, inputs[0].dtype);
     }
@@ -455,6 +530,9 @@ export class WebGPUBackend extends KernelBackend {
 
     const shouldTimeProgram = this.activeTimers != null;
     let query: CPUTimerQuery;
+    if (shouldTimeProgram) {
+      query = this.startTimer();
+    }
 
     // Creating bind groups on the fly should never be a bottleneck.
     const bg = webgpu_program.makeBindGroup(
@@ -464,25 +542,36 @@ export class WebGPUBackend extends KernelBackend {
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginComputePass();
     if (shouldTimeProgram) {
-      if (this.supportTimeQuery) {
-        pass.writeTimestamp(this.querySet, 0);
-      } else {
-        query = this.startTimer();
-      }
+      pass.writeTimestamp(this.querySet, this.opsCounter);
+      ++this.opsCounter;
+    }
+    if (this.activeTimers == null &&
+        env().getBool('WEBGPU_ENABLE_TIMESTAMP_QUERY')) {
+      pass.writeTimestamp(this.modelQuerySet, this.opsCounter);
+      ++this.opsCounter;
     }
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bg);
     pass.dispatch(
         program.dispatch[0], program.dispatch[1], program.dispatch[2]);
     if (shouldTimeProgram) {
-      if (this.supportTimeQuery) {
-        pass.writeTimestamp(this.querySet, 1);
-      } else {
-        query = this.endTimer(query);
-      }
+      pass.writeTimestamp(this.querySet, this.opsCounter);
+      ++this.opsCounter;
+    }
+    if (this.activeTimers == null &&
+        env().getBool('WEBGPU_ENABLE_TIMESTAMP_QUERY')) {
+      pass.writeTimestamp(this.modelQuerySet, this.opsCounter);
+      ++this.opsCounter;
     }
     pass.endPass();
 
+    if (shouldTimeProgram) {
+      // tslint:disable-next-line:no-any
+      (encoder as any)
+          .resolveQuerySet(
+              this.querySet, this.opsCounter - 2, 2, this.queryBuffer,
+              8 * (this.opsCounter - 2));
+    }
     this.commandQueue.push(encoder);
 
     inputs.forEach(input => {
@@ -504,39 +593,54 @@ export class WebGPUBackend extends KernelBackend {
     }
 
     if (shouldTimeProgram) {
-      if (this.supportTimeQuery) {
-        this.activeTimers.push({
-            name: program.constructor.name,
-            query: this.getQueryTime(this.querySet)});
-      } else {
-        this.activeTimers.push(
-            {name: program.constructor.name, query: this.getQueryTime(query)});
-      }
+      query = this.endTimer(query);
+      this.activeTimers.push({
+        name: program.constructor.name,
+        query: this.getQueryTime(this.opsCounter - 2)
+      });
+    }
+    if (this.activeTimers == null &&
+        env().getBool('WEBGPU_ENABLE_TIMESTAMP_QUERY')) {
+      this.cpuTimeline.push(performance.now());
     }
     return output as {} as K;
   }
-  async getTimeFromQuerySet(querySet: GPUQuerySet) {
-    const queryBuffer = this.acquireBuffer(16,
-            GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
-    const dst = this.acquireBuffer(
-        16, GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
 
-    const encoder = this.device.createCommandEncoder();
-    // tslint:disable-next-line:no-any
-    (encoder as any).resolveQuerySet(querySet, 0, 2, queryBuffer, 0);
-    encoder.copyBufferToBuffer(queryBuffer, 0, dst, 0, 16);
-    this.commandQueue.push(encoder);
-    this.submitQueue();
+  async getQueryResultAtIndex(counter: number) {
+    const buf = this.queryBuffer;
+
+    const dst = this.device.createBuffer({
+      size: 16,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+
+    const c = this.device.createCommandEncoder();
+    c.copyBufferToBuffer(buf, 8 * counter, dst, 0, 16);
+    this.device.defaultQueue.submit([c.finish()]);
     await dst.mapAsync(GPUMapMode.READ);
+    // @ts-ignore
     const arrayBuf = new BigUint64Array(dst.getMappedRange());
-    const timeElapsedNanos = Number((arrayBuf[1] - arrayBuf[0]));
-    dst.unmap();
-    this.bufferManager.releaseBuffer(dst, 16,
-        GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST);
-    this.bufferManager.releaseBuffer(queryBuffer, 16,
-        GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE);
-    // Return milliseconds.
-    return timeElapsedNanos / 1000000;
+    const tickDelta = Number((arrayBuf[1] - arrayBuf[0]));
+    dst.destroy();
+    return tickDelta * 1000 / GPU_TIMESTAMP_FREQUENCY;
+  }
+
+  async getEachOpQueryResult() {
+    const buf = this.modelQueryBuffer;
+
+    const dst = this.device.createBuffer({
+      size: 8 * this.opsCounter,
+      usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST,
+    });
+
+    const c = this.device.createCommandEncoder();
+    c.copyBufferToBuffer(buf, 0, dst, 0, 8 * this.opsCounter);
+    this.device.defaultQueue.submit([c.finish()]);
+    await dst.mapAsync(GPUMapMode.READ);
+    // @ts-ignore
+    const arrayBuf = new BigUint64Array(dst.getMappedRange().slice(0));
+    dst.destroy();
+    return arrayBuf;
   }
 
   private makeUniforms(data: Uint32Array|Int32Array): GPUBindingResource {
@@ -573,6 +677,14 @@ export class WebGPUBackend extends KernelBackend {
     const program = new PadProgram(x.shape, paddings, constantValue);
     const output = this.makeOutputArray(program.outputShape, x.dtype);
     return this.compileAndRun(program, [x], output);
+  }
+
+  gather<T extends Tensor>(x: T, indices: Tensor1D, axis: number): T {
+    if (this.shouldExecuteOnCPU([x, indices])) {
+      return this.cpuBackend.gather(x, indices, axis);
+    }
+    const program = new GatherProgram(x.shape, indices.size, axis);
+    return this.compileAndRun(program, [x, indices]);
   }
 
   avgPool(x: Tensor4D, convInfo: backend_util.Conv2DInfo): Tensor4D {
@@ -638,9 +750,30 @@ export class WebGPUBackend extends KernelBackend {
 
   add(a: Tensor, b: Tensor): Tensor {
     if (this.shouldExecuteOnCPU([a, b])) {
-      return this.cpuBackend.add(a, b);
+      const aData = this.tensorMap.get(a.dataId);
+      const bData = this.tensorMap.get(b.dataId);
+      const [outValues, outShape] = cpuAdd(
+          a.shape, b.shape, aData.values as TypedArray,
+          bData.values as TypedArray, 'float32');
+
+      const dataId = this.write(null /*values*/, outShape, 'float32');
+      const output =
+          engine().makeTensorFromDataId(dataId, outShape, 'float32', this);
+      //const out = this.makeTensorInfo(outShape, 'float32');
+      const outData = this.tensorMap.get(dataId);
+      outData.values = outValues;
+      return output;
     }
     return this.binaryOp(a, b, BinaryOpType.ADD);
+  }
+
+  addN<T extends Tensor>(tensors: T[]): T {
+    if (tensors.length === 1) {
+      return tensors[0];
+    }
+    const shapes = tensors.map(t => t.shape);
+    const program = new AddNPackedProgram(shapes);
+    return this.compileAndRun<T>(program, tensors);
   }
 
   subtract(a: Tensor, b: Tensor): Tensor {
@@ -909,12 +1042,7 @@ export class WebGPUBackend extends KernelBackend {
   }
 
   clip<T extends Tensor>(x: T, min: number, max: number): T {
-    let program: ClipProgram|ClipVec4Program;
-    if (util.sizeFromShape(x.shape) % 4 === 0) {
-      program = new ClipVec4Program(x.shape, min, max);
-    } else {
-      program = new ClipProgram(x.shape, min, max);
-    }
+    const program = new ClipProgram(x.shape, min, max);
     return this.compileAndRun(program, [x]);
   }
 
@@ -976,7 +1104,19 @@ export class WebGPUBackend extends KernelBackend {
 
   multiply(a: Tensor, b: Tensor): Tensor {
     if (this.shouldExecuteOnCPU([a, b])) {
-      return this.cpuBackend.multiply(a, b);
+      const aData = this.tensorMap.get(a.dataId);
+      const bData = this.tensorMap.get(b.dataId);
+      const [outValues, outShape] = cpuMultiply(
+          a.shape, b.shape, aData.values as TypedArray,
+          bData.values as TypedArray, 'float32');
+
+      const dataId = this.write(null /*values*/, outShape, 'float32');
+      const output =
+          engine().makeTensorFromDataId(dataId, outShape, 'float32', this);
+      //const out = this.makeTensorInfo(outShape, 'float32');
+      const outData = this.tensorMap.get(dataId);
+      outData.values = outValues;
+      return output;
     }
     return this.binaryOp(a, b, BinaryOpType.MUL);
   }
@@ -1130,6 +1270,27 @@ export class WebGPUBackend extends KernelBackend {
     return backend_util.castTensor(x, dtype, this);
   }
 
+  unstack(x: Tensor, axis: number): Tensor[] {
+    const num = x.shape[axis];
+    const outShape: number[] = new Array(x.rank - 1);
+    let outIndex = 0;
+    for (let i = 0; i < x.rank; i++) {
+      if (i !== axis) {
+        outShape[outIndex++] = x.shape[i];
+      }
+    }
+
+    const begin = new Array(x.rank).fill(0);
+    const size = x.shape.slice();
+    size[axis] = 1;
+    const res = new Array(num);
+    for (let i = 0; i < res.length; i++) {
+      begin[axis] = i;
+      res[i] = this.slice(x, begin, size).reshape(outShape);
+    }
+    return res;
+  }
+
   transpose<T extends Tensor>(x: T, perm: number[]): T {
     if (this.shouldExecuteOnCPU([x])) {
       return this.cpuBackend.transpose(x, perm);
@@ -1248,6 +1409,10 @@ export class WebGPUBackend extends KernelBackend {
     if (this.fromPixelProgram) {
       this.fromPixelProgram.dispose();
     }
+    this.modelQueryBuffer.destroy();
+    this.modelQuerySet.destroy();
+    this.querySet.destroy();
+    this.queryBuffer.destroy();
     this.disposed = true;
   }
 }

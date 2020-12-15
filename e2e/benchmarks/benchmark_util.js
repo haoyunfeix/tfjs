@@ -368,8 +368,8 @@ async function profileInference(predict) {
     tf.dispose(res);
   });
 
-  kernelInfo.kernels =
-      kernelInfo.kernels.sort((a, b) => b.kernelTimeMs - a.kernelTimeMs);
+  //kernelInfo.kernels =
+  //    kernelInfo.kernels.sort((a, b) => b.kernelTimeMs - a.kernelTimeMs);
   kernelInfo.aggregatedKernels = aggregateKernelTime(kernelInfo.kernels);
   return kernelInfo;
 }

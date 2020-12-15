@@ -51,3 +51,5 @@ ENV.registerFlag('WEBGPU_CONV_SEPARATE_IM2COL_SHADER', () => false);
  * requested.
  */
 ENV.registerFlag('WEBGPU_USE_LOW_POWER_GPU', () => false);
+ENV.registerFlag('WEBGPU_ENABLE_TIMESTAMP_QUERY', () => true);
+ENV.registerFlag('WEBGPU_PRINT_QUERY_RESULT_AT_ITERATION', () => 150);
