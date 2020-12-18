@@ -85,18 +85,24 @@ limitations under the License.
       <tbody></tbody>
     </table>
   </div>
-  <script src="https://unpkg.com/@tensorflow/tfjs-core@latest/dist/tf-core.js"></script>
+  <script src="../dist/tf-core.js"></script>
+  <!--<script src="https://unpkg.com/@tensorflow/tfjs-core@latest/dist/tf-core.js"></script>
   <script src="https://unpkg.com/@tensorflow/tfjs-backend-cpu@latest/dist/tf-backend-cpu.js"></script>
   <script src="https://unpkg.com/@tensorflow/tfjs-backend-webgl@latest/dist/tf-backend-webgl.js"></script>
+  <script src="https://unpkg.com/@tensorflow/tfjs-converter@latest/dist/tf-converter.js"></script>-->
   <script src="https://unpkg.com/@tensorflow/tfjs-layers@latest/dist/tf-layers.js"></script>
-  <script src="https://unpkg.com/@tensorflow/tfjs-converter@latest/dist/tf-converter.js"></script>
-  <script src="https://unpkg.com/@tensorflow/tfjs-backend-wasm@latest/dist/tf-backend-wasm.js"></script>
+  <!--<script src="https://unpkg.com/@tensorflow/tfjs-backend-wasm@latest/dist/tf-backend-wasm.js"></script>-->
   <script src="https://unpkg.com/@tensorflow/tfjs-automl@latest/dist/tf-automl.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/universal-sentence-encoder"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/speech-commands"> </script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2"></script>
 
+  <script src="../dist/tf-backend-cpu.js"></script>
+  <script src="../dist/tf-backend-webgl.js"></script>
+  <script src="../dist/tf-converter.js"></script>
+  <script src="../dist/tf-webgpu.js"></script>
+  <script src="../dist/qna.min.js"></script>
   <script src="../model_config.js"></script>
   <script src="../benchmark_util.js"></script>
   <script src="./util.js"></script>
@@ -158,7 +164,7 @@ limitations under the License.
           appendRow(timeTable, '', '');
         }
       },
-      backend: 'wasm',
+      backend: 'webgpu',
       kernelTiming: 'aggregate',
       modelType: '',
       modelUrl: '',
@@ -200,9 +206,8 @@ limitations under the License.
 
     async function showEnvironment() {
       await tf.time(() => tf.add(tf.tensor1d([1]), tf.tensor1d([1])).data());
-      const sortedFeatures = Object.keys(tf.env().features).sort().map(
-          name=>`  ${name}: ${tf.env().features[name]}`);
-      envDiv.innerHTML += `<br/>{<br>${sortedFeatures.join('<br>')}<br>}`;
+      envDiv.innerHTML += `<br/>${JSON.stringify(tf.env().features, null, 2)
+        } `;
     }
 
     function showBenchmarkingParameters() {
@@ -328,7 +333,7 @@ limitations under the License.
       }
 
       await tf.nextFrame();
-      return state.benchmark === 'custom' &&  variableShape;
+      return variableShape;
     }
 
     function createRangeInput(range, index) {
@@ -497,7 +502,7 @@ limitations under the License.
     }
 
     async function loadModel() {
-      if (state.isModelChanged || !state.isModelLoaded || state.isFlagChanged) {
+      if (state.isModelChanged || !state.isModelLoaded) {
         await loadModelAndRecordTime();
         state.isModelLoaded = true;
         const needInputShape = await showInputs();
@@ -512,6 +517,7 @@ limitations under the License.
     async function runBenchmark() {
       if (state.isFlagChanged) {
         await setEnvFlags(state.flags);
+        state.isFlagChanged = false;
         envDiv.innerHTML = '';
         showVersions();
         await showEnvironment();
@@ -520,9 +526,6 @@ limitations under the License.
       await setupKernelTable();
 
       const canProceed = await loadModel();
-      if (state.isFlagChanged) {
-        state.isFlagChanged = false;
-      }
       // return immediately if load model failed or need user input.
       if (!canProceed) {
         return;
@@ -532,9 +535,9 @@ limitations under the License.
       await warmUpAndRecordTime();
       await showMsg('Waiting for GC');
       await sleep(1000);
-      await profileMemoryAndKernelTime();
-      await sleep(200);
       await measureAveragePredictTime();
+      await profileMemoryAndKernelTime();
+      //await sleep(200);
     }
 
 
@@ -573,7 +576,7 @@ limitations under the License.
       parameterFolder.open();
 
       const envFolder = gui.addFolder('Environment');
-      envFolder.add(state, 'backend', ['wasm', 'webgl', 'cpu']).onChange(async backend => {
+      envFolder.add(state, 'backend', [ 'webgl', 'cpu', 'webgpu']).onChange(async backend => {
         // TODO: Failed to set backend
         await tf.setBackend(backend);
         await showFlagSettings(envFolder, state.backend);

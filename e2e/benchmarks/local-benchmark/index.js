@@ -18,17 +18,17 @@
 const BACKEND_FLAGS_MAP = {
   general: [],
   cpu: [],
-  wasm: ['WASM_HAS_SIMD_SUPPORT', 'WASM_HAS_MULTITHREAD_SUPPORT'],
+  //wasm: ['WASM_HAS_SIMD_SUPPORT'],
   webgl: [
     'WEBGL_VERSION', 'WEBGL_CPU_FORWARD', 'WEBGL_PACK',
     'WEBGL_FORCE_F16_TEXTURES', 'WEBGL_RENDER_FLOAT32_CAPABLE'
-  ]
+  ],
+  webgpu:[]
 };
 const TUNABLE_FLAG_NAME_MAP = {
   PROD: 'production mode',
   WEBGL_VERSION: 'webgl version',
-  WASM_HAS_SIMD_SUPPORT: 'wasm SIMD',
-  WASM_HAS_MULTITHREAD_SUPPORT: 'wasm multithread',
+  //WASM_HAS_SIMD_SUPPORT: 'wasm SIMD',
   WEBGL_CPU_FORWARD: 'cpu forward',
   WEBGL_PACK: 'webgl pack',
   WEBGL_FORCE_F16_TEXTURES: 'enforce float16',
@@ -135,7 +135,7 @@ async function initDefaultValueMap() {
   for (const backend in BACKEND_FLAGS_MAP) {
     for (let index = 0; index < BACKEND_FLAGS_MAP[backend].length; index++) {
       const flag = BACKEND_FLAGS_MAP[backend][index];
-      TUNABLE_FLAG_DEFAULT_VALUE_MAP[flag] = await tf.env().getAsync(flag);
+      //TUNABLE_FLAG_DEFAULT_VALUE_MAP[flag] = await tf.env().getAsync(flag);
     }
   }
 
