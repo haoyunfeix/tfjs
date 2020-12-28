@@ -80,11 +80,16 @@ export function setupTestFilters(
 }
 
 setTestEnvs([{
-  name: 'test-webgpu',
+  name: 'test-webgl',
+  backendName: 'webgl',
+  isDataSync: false,
+},
+  {name: 'test-webgpu',
   backendName: 'webgpu',
   flags: {'WEBGPU_CPU_FORWARD': false},
   isDataSync: false,
-}]);
+}
+]);
 
 const TEST_FILTERS: TestFilter[] = [
   {
