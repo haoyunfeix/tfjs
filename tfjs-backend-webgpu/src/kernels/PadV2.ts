@@ -15,14 +15,24 @@
  * =============================================================================
  */
 
-import {TensorInfo} from '@tensorflow/tfjs-core';
+import {KernelConfig, KernelFunc, PadV2, PadV2Attrs, PadV2Inputs, TensorInfo} from '@tensorflow/tfjs-core';
 
 import {WebGPUBackend} from '../backend_webgpu';
+import {PadProgram} from './pad_webgpu';
 
-import {BinaryOpType, getBinaryProgram} from './binary_ops';
+export const padV2 =
+    (args: {inputs: PadV2Inputs, backend: WebGPUBackend, attrs: PadV2Attrs}):
+        TensorInfo => {
+          const {inputs, backend, attrs} = args;
+          const {x} = inputs;
+          const {paddings, constantValue} = attrs;
 
-export function divImpl(
-    a: TensorInfo, b: TensorInfo, backend: WebGPUBackend): TensorInfo {
-  const program = getBinaryProgram(BinaryOpType.DIV, a.shape, b.shape);
-  return backend.runWebGPUProgram(program, [a, b], a.dtype);
-}
+          const program = new PadProgram(x.shape, paddings, constantValue);
+          return backend.runWebGPUProgram(program, [x], x.dtype);
+        };
+
+export const padV2Config: KernelConfig = {
+  kernelName: PadV2,
+  backendName: 'webgpu',
+  kernelFunc: padV2 as {} as KernelFunc
+};
