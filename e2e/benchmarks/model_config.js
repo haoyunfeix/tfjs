@@ -75,6 +75,85 @@ const sentences = [
 ];
 
 const benchmarks = {
+  'posenet_resNet_q4_s32_input224_tensor': {
+    load: async () => {
+      const resNetConfig ={
+        architecture: 'ResNet50',
+        outputStride: 32,
+        inputResolution: 224,
+        quantBytes: 4,
+        //modelUrl: 'savedmodel/posenet/resnet50/float/model-stride32.json'
+      };
+      const model = await posenet.load(resNetConfig);
+      return model;
+    },
+    predictFunc: () => {
+      const zeros = tf.zeros([224, 224, 3]);
+      return async model => {
+        return model.estimateSinglePose(zeros);
+      }
+    }
+  },
+  'posenet_resNet_q4_s32_input224_image': {
+    load: async () => {
+      const resNetConfig ={
+        architecture: 'ResNet50',
+        outputStride: 32,
+        inputResolution: 224,
+        quantBytes: 4,
+        //modelUrl: 'savedmodel/posenet/resnet50/float/model-stride32.json'
+      };
+      const model = await posenet.load(resNetConfig);
+      model.image = await loadImage('tennis_standing.jpg');
+      return model;
+    },
+    predictFunc: () => {
+      const zeros = tf.zeros([224, 224, 3]);
+      return async model => {
+        return model.estimateSinglePose(model.image);
+      }
+    }
+  },
+  'posenet_mobileNet_q2_m75_s16_input513_tensor': {
+    load: async () => {
+      const mobileNetConfig = {
+        architecture: 'MobileNetV1',
+        outputStride: 16,
+        inputResolution: 513,
+        multiplier: 0.75,
+        quantBytes: 2,
+        //modelUrl: 'savedmodel/posenet/mobilenet/quant2/075/model-stride16.json'
+      };
+      const model = await posenet.load(mobileNetConfig);
+      return model;
+    },
+    predictFunc: () => {
+      const zeros = tf.zeros([513, 513, 3]);
+      return async model => {
+        return model.estimateSinglePose(zeros);
+      }
+    }
+  },
+  'posenet_mobileNet_q2_m75_s16_input513_image': {
+    load: async () => {
+      const mobileNetConfig = {
+        architecture: 'MobileNetV1',
+        outputStride: 16,
+        inputResolution: 513,
+        multiplier: 0.75,
+        quantBytes: 2,
+        //modelUrl: 'savedmodel/posenet/mobilenet/quant2/075/model-stride16.json'
+      };
+      const model = await posenet.load(mobileNetConfig);
+      model.image = await loadImage('tennis_standing.jpg');
+      return model;
+    },
+    predictFunc: () => {
+      return async model => {
+        return model.estimateSinglePose(model.image);
+      }
+    }
+  },
   'mobilenet_v2': {
     type: 'GraphModel',
     load: async () => {

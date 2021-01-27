@@ -98,15 +98,33 @@ limitations under the License.
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/posenet@2"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2"></script>
 
+  <script src="../../../tfjs-backend-webgpu/dist/tf-webgpu.js"></script>
   <script src="../model_config.js"></script>
   <script src="../benchmark_util.js"></script>
   <script src="./util.js"></script>
   <script src="./index.js"></script>
   <script>
     'use strict';
+    const getParams = function (url) {
+      const params = {};
+      const parser = document.createElement('a');
+      parser.href = url;
+      const query = parser.search.substring(1);
+      const vars = query.split('&');
+      for (let i = 0; i < vars.length; i++) {
+        const pair = vars[i].split('=');
+        params[pair[0]] = decodeURIComponent(pair[1]);
+      }
+      return params;
+    };
+    const params = getParams(window.location.href);
+    let runTimes = 50;
+    if (Object.keys(params).includes('run')) {
+      runTimes = Number(params['run']);
+    }
 
     const state = {
-      numRuns: 50,
+      numRuns: runTimes,
       benchmark: 'mobilenet_v2',
       run: (v) => {
         runBenchmark().catch(e => {
@@ -265,18 +283,22 @@ limitations under the License.
     }
 
     async function warmUpAndRecordTime() {
-      await showMsg('Warming up');
+      let warmupTimes = 50;
+      if (Object.keys(params).includes('warmup')) {
+        warmupTimes = Number(params['warmup']);
+      }
+      await showMsg(`Warming up for ${warmupTimes} time(s)`);
 
       let timeInfo;
       if (state.benchmark === 'custom') {
         const input = generateInputFromDef(state.inputs, model instanceof tf.GraphModel);
         try {
-          timeInfo = await timeModelInference(model, input, 1);
+          timeInfo = await timeModelInference(model, input, warmupTimes);
         } finally {
           tf.dispose(input);
         }
       } else {
-        timeInfo = await timeInference(() => predict(model), 1);
+        timeInfo = await timeInference(() => predict(model), warmupTimes);
       }
 
       await showMsg(null);
@@ -406,6 +428,7 @@ limitations under the License.
 
       let timeInfo;
       const numRuns = state.numRuns;
+      const warmRuns = 20;
       if (state.benchmark === 'custom') {
         const input = generateInputFromDef(state.inputs, model instanceof tf.GraphModel);
         try {
@@ -414,7 +437,7 @@ limitations under the License.
           tf.dispose(input);
         }
       } else {
-        timeInfo = await timeInference(() => predict(model), numRuns);
+        timeInfo = await timeInference(() => predict(model), numRuns, warmRuns);
       }
 
       const forceInferenceTrendYMinToZero = true;
@@ -536,11 +559,16 @@ limitations under the License.
       }
       await showBenchmarkingParameters();
 
-      await warmUpAndRecordTime();
+      if (Number(params['warmup']) !== 0) {
+        await warmUpAndRecordTime();
+      } else {
+        await showMsg('Skip warming up');
+        await sleep(1000);
+      }
       await showMsg('Waiting for GC');
-      await sleep(1000);
+      //await sleep(1000);
       await profileMemoryAndKernelTime();
-      await sleep(200);
+      //await sleep(200);
       await measureAveragePredictTime();
     }
 
@@ -616,7 +644,7 @@ limitations under the License.
       modelParameterFolder.open();
 
       const envFolder = gui.addFolder('Environment');
-      envFolder.add(state, 'backend', ['wasm', 'webgl', 'cpu']).onChange(async backend => {
+      envFolder.add(state, 'backend', ['wasm', 'webgl', 'cpu', 'webgpu']).onChange(async backend => {
         // TODO: Failed to set backend
         await tf.setBackend(backend);
         await showFlagSettings(envFolder, state.backend);

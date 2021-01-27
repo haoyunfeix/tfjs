@@ -219,7 +219,7 @@ async function timeModelInference(model, input, numRuns = 1) {
  * @param predict The predict function to execute and time.
  * @param numRuns The number of rounds for `predict` to execute and time.
  */
-async function timeInference(predict, numRuns = 1) {
+async function timeInference(predict, numRuns = 1, warmRuns = 0) {
   if (typeof predict !== 'function') {
     throw new Error(
         'The first parameter should be a function, while ' +
@@ -227,7 +227,7 @@ async function timeInference(predict, numRuns = 1) {
   }
 
   const times = [];
-  for (let i = 0; i < numRuns; i++) {
+  for (let i = 0; i < (numRuns + warmRuns); i++) {
     const start = performance.now();
     const res = await predict();
     // The prediction can be tf.Tensor|tf.Tensor[]|{[name: string]: tf.Tensor}.
@@ -235,7 +235,9 @@ async function timeInference(predict, numRuns = 1) {
     const elapsedTime = performance.now() - start;
 
     tf.dispose(res);
-    times.push(elapsedTime);
+    if (i >= warmRuns) {
+      times.push(elapsedTime);
+    }
   }
 
   const averageTime = times.reduce((acc, curr) => acc + curr, 0) / times.length;
@@ -368,8 +370,8 @@ async function profileInference(predict) {
     tf.dispose(res);
   });
 
-  kernelInfo.kernels =
-      kernelInfo.kernels.sort((a, b) => b.kernelTimeMs - a.kernelTimeMs);
+  //kernelInfo.kernels =
+  //    kernelInfo.kernels.sort((a, b) => b.kernelTimeMs - a.kernelTimeMs);
   kernelInfo.aggregatedKernels = aggregateKernelTime(kernelInfo.kernels);
   return kernelInfo;
 }
