@@ -38,7 +38,7 @@ export class ReduceProgram implements WebGPUProgram {
     this.outputShape = outputShape.length === 0 ? [1] : outputShape;
     const reduceSize = util.sizeFromShape(reduceShape);
 
-    const reductionFactor = 2;
+    const reductionFactor = 16;
     const xMaxThreads = 1024;
     const xThreads =
         Math.min(Math.ceil(reduceSize / reductionFactor), xMaxThreads);
