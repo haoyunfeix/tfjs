@@ -17,6 +17,8 @@
 
 import * as tfc from '@tensorflow/tfjs-converter';
 import * as tf from '@tensorflow/tfjs-core';
+import * as tfl from '@tensorflow/tfjs-layers';
+import {createInputTensors} from './one_dimensional/test_util';
 
 import {describeWebGPU} from './test_util';
 
@@ -42,6 +44,29 @@ describeWebGPU('Models benchmarks', () => {
     }
     return performance.now() - start;
   }
+
+  fit('one-dimensional', async () => {
+    const $model =
+        await tfl.loadLayersModel(`./base/src/one_dimensional/model.json`);
+
+    let inputsData: tf.TypedArray[];
+    let inputsShapes: number[][];
+    [inputsData, inputsShapes] = await Promise.all([
+      fetch(`./base/src/one_dimensional/xs-data.json`)
+          .then(response => response.json()),
+      fetch(`./base/src/one_dimensional/xs-shapes.json`)
+          .then(response => response.json())
+    ]);
+    const xs = createInputTensors(inputsData, inputsShapes) as tf.Tensor[];
+    const result = $model.predict(xs);
+    const ys = ($model.outputs.length === 1 ? [result] : result) as tf.Tensor[];
+
+    // Validate outputs with keras results.
+    for (let i = 0; i < ys.length; i++) {
+      const y = ys[i];
+      console.log(await y.data());
+    }
+  });
 
   it('resnet50', async () => {
     const input = tf.randomNormal([1, 224, 224, 3]);

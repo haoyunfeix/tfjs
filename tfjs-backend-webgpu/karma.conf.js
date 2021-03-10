@@ -39,6 +39,8 @@ const devConfig = {
     {pattern: './node_modules/@babel/polyfill/dist/polyfill.js'},
     'src/setup_test.ts',
     {pattern: 'src/**/*.ts'},
+    {pattern: 'src/**/*.json'},
+    {pattern: 'src/**/*.bin'},
   ],
   preprocessors: {'src/**/*.ts': ['karma-typescript']},
   karmaTypescriptConfig,
