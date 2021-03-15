@@ -23,7 +23,7 @@ import * as tfconverter from '@tensorflow/tfjs-converter';
 import * as tfc from '@tensorflow/tfjs-core';
 // tslint:disable-next-line: no-imports-from-dist
 import {ALL_ENVS, describeWithFlags} from '@tensorflow/tfjs-core/dist/jasmine_util';
-// import * as tfl from '@tensorflow/tfjs-layers';
+import * as tfl from '@tensorflow/tfjs-layers';
 
 import {KARMA_SERVER, SMOKE} from './constants';
 
@@ -35,33 +35,33 @@ import {KARMA_SERVER, SMOKE} from './constants';
  *  - Make inference using each backends.
  */
 describe(`${SMOKE} load_predict`, () => {
-  // describeWithFlags(`layers_model`, ALL_ENVS, () => {
-  //  let model: tfl.LayersModel;
-  //  let inputs: tfc.Tensor;
+  describeWithFlags(`layers_model`, ALL_ENVS, () => {
+    let model: tfl.LayersModel;
+    let inputs: tfc.Tensor;
 
-  //  const expected = [
-  //    -0.003578941337764263, 0.0028922036290168762, -0.002957976423203945,
-  //    0.00955402385443449
-  //  ];
+    const expected = [
+      -0.003578941337764263, 0.0028922036290168762, -0.002957976423203945,
+      0.00955402385443449
+    ];
 
-  //  beforeAll(async () => {
-  //    model = await tfl.loadLayersModel(
-  //        `${KARMA_SERVER}/load_predict_data/layers_model/model.json`);
-  //  });
+    beforeAll(async () => {
+      model = await tfl.loadLayersModel(
+          `${KARMA_SERVER}/load_predict_data/layers_model/model.json`);
+    });
 
-  //  beforeEach(() => {
-  //    inputs = tfc.tensor([86, 11, 62, 40, 36, 75, 82, 94, 67, 75], [1, 10]);
-  //  });
+    beforeEach(() => {
+      inputs = tfc.tensor([86, 11, 62, 40, 36, 75, 82, 94, 67, 75], [1, 10]);
+    });
 
-  //  afterEach(() => {
-  //    inputs.dispose();
-  //  });
+    afterEach(() => {
+      inputs.dispose();
+    });
 
-  //  it(`predict`, async () => {
-  //    const result = model.predict(inputs) as tfc.Tensor;
-  //    tfc.test_util.expectArraysClose(await result.data(), expected);
-  //  });
-  //});
+    it(`predict`, async () => {
+      const result = model.predict(inputs) as tfc.Tensor;
+      tfc.test_util.expectArraysClose(await result.data(), expected);
+    });
+  });
 
   describeWithFlags(`graph_model`, ALL_ENVS, async () => {
     let a: tfc.Tensor;

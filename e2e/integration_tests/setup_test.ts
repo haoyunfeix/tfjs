@@ -24,17 +24,17 @@ import {parseTestEnvFromKarmaFlags, registerTestEnv, setTestEnvs, TEST_ENVS} fro
 
 import {TAGS} from './constants';
 
-// registerTestEnv({
-//  name: 'webgl',
-//  backendName: 'webgl',
-//  flags: {
-//    'WEBGL_VERSION': 2,
-//    'WEBGL_CPU_FORWARD': false,
-//    'WEBGL_SIZE_UPLOAD_UNIFORM': 0
-//  },
-//  isDataSync: true
-//});
-//
+registerTestEnv({
+  name: 'webgl',
+  backendName: 'webgl',
+  flags: {
+    'WEBGL_VERSION': 2,
+    'WEBGL_CPU_FORWARD': false,
+    'WEBGL_SIZE_UPLOAD_UNIFORM': 0
+  },
+  isDataSync: true
+});
+
 registerTestEnv({name: 'cpu', backendName: 'cpu', isDataSync: true});
 
 registerTestEnv({
