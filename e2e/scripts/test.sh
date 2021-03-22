@@ -46,7 +46,7 @@ if [[ "$TAGS" == *"#REGRESSION"*  ]]; then
   python convert_predict.py
 
   echo "Convert model with user defined metadata."
-  python metadata.py
+  #python metadata.py
 
   # Cleanup python env.
   source ../scripts/cleanup-py-env.sh
@@ -55,12 +55,12 @@ if [[ "$TAGS" == *"#REGRESSION"*  ]]; then
 
 
   # Build the wasm backend
-  yarn build-backend-wasm
+  #yarn build-backend-wasm
 
   # Generate custom bundle files for tests
   ./scripts/run-custom-builds.sh
 fi
 
 echo "Karma tests."
-karma start --tags $TAGS
+yarn karma start --tags $TAGS
 

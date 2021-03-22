@@ -42,11 +42,12 @@ const mkdir = util.promisify(fs.mkdir);
 const rename = util.promisify(fs.rename);
 const rimrafPromise = util.promisify(rimraf);
 
-const CDN_STORAGE = process.env.TFJS_NODE_CDN_STORAGE || process.env.npm_config_TFJS_NODE_CDN_STORAGE
-    || process.env.CDN_STORAGE;
+const CDN_STORAGE = process.env.TFJS_NODE_CDN_STORAGE ||
+    process.env.npm_config_TFJS_NODE_CDN_STORAGE || process.env.CDN_STORAGE;
 const BASE_HOST = CDN_STORAGE || 'https://storage.googleapis.com/';
-const BASE_URI = process.env.TFJS_NODE_BASE_URI || process.env.npm_config_TFJS_NODE_BASE_URI
-    || `${BASE_HOST}tensorflow/libtensorflow/libtensorflow-`;
+const BASE_URI = process.env.TFJS_NODE_BASE_URI ||
+    process.env.npm_config_TFJS_NODE_BASE_URI ||
+    `${BASE_HOST}tensorflow/libtensorflow/libtensorflow-`;
 
 const platform = os.platform();
 // Use windows path
@@ -171,7 +172,7 @@ async function build() {
     // Has custom tensorflow shared libs but no addon. Then build it from source
     buildOption = '--build-from-source';
   }
-  cp.exec(`node-pre-gyp install ${buildOption}`, (err) => {
+  cp.exec(`yarn node-pre-gyp install ${buildOption}`, (err) => {
     if (err) {
       console.log('node-pre-gyp install failed with error: ' + err);
       process.exit(1);
