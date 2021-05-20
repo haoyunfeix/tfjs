@@ -310,6 +310,50 @@ const benchmarks = {
       }
     }
   },
+  'pose-detection': {
+    type: 'GraphModel',
+    inputSizes: [128, 256, 512, 1024],
+    architectures: ['MoveNet', 'BlazePose', 'PoseNet'],
+    inputTypes: ['image', 'tensor', 'imageBitmap'],
+    modelTypes: ['lite', 'full', 'heavy', 'lightning'],
+    load: async (
+        inputResolution = 128, modelArchitecture = 'MoveNet',
+        inputType = 'image', modelType = 'full') => {
+      let config = null;
+      if (modelArchitecture === 'PoseNet') {
+        config = {
+          quantBytes: 4,
+          architecture: 'MobileNetV1',
+          outputStride: 16,
+          multiplier: 0.75,
+          inputResolution: inputResolution,
+        };
+      } else if (modelArchitecture === 'MoveNet') {
+        config = {
+          modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING,
+        };
+      } else if (modelArchitecture === 'BlazePose') {
+        config = {runtime: 'tfjs', enableSmoothing: true, modelType};
+      }
+      const model =
+          await poseDetection.createDetector(modelArchitecture, config);
+      if (inputType === 'tensor') {
+        model.input = tf.zeros([inputResolution, inputResolution, 3]);
+      } else if (inputType === 'imageBitmap') {
+        const image = await loadImage('tennis_standing.jpg');
+        model.input =
+            await createImageBitmap(image, {premultiplyAlpha: 'none'});
+      } else {
+        model.input = await loadImage('tennis_standing.jpg');
+      }
+      return model;
+    },
+    predictFunc: () => {
+      return async model => {
+        return model.estimatePoses(model.input);
+      };
+    }
+  },
   'custom': {
     type: '',
     load: async () => {
@@ -319,8 +363,9 @@ const benchmarks = {
       return async (model, customInput) => {
         let inferenceInput;
         try {
-          inferenceInput = customInput || generateInputFromDef(
-              state.inputs, model instanceof tf.GraphModel);
+          inferenceInput = customInput ||
+              generateInputFromDef(
+                               state.inputs, model instanceof tf.GraphModel);
           const predict = getPredictFnForModel(model, inferenceInput);
           const inferenceOutput = await predict();
           return inferenceOutput;

@@ -18,6 +18,7 @@
 const BACKEND_FLAGS_MAP = {
   general: [],
   cpu: [],
+  webgpu: [],
   wasm: [
     'WASM_HAS_SIMD_SUPPORT',
     'WASM_HAS_MULTITHREAD_SUPPORT',
