@@ -8,7 +8,7 @@
   "unpkg": "dist/tf-backend-webgl.min.js",
   "types": "dist/index.d.ts",
   "jsnext:main": "dist/index.js",
-  "module": "dist/index.js",
+  "module": "dist/tf-backend-webgl.es2017.js",
   "miniprogram": "dist/miniprogram",
   "engines": {
     "yarn": ">= 1.3.2"
@@ -59,7 +59,7 @@
     "build-cpu-backend-ci": "cd ../tfjs-backend-cpu && yarn && yarn build-ci",
     "build-npm": "./scripts/build-npm.sh",
     "link-local": "yalc link",
-    "publish-local": "rimraf dist/ && yarn build && rollup -c && yalc push",
+    "publish-local": "rimraf dist/ && yarn build && rollup -c --npm && yalc push",
     "publish-npm": "npm publish",
     "lint": "tslint -p . -t verbose",
     "test": "yarn && yarn build-deps && karma start",
