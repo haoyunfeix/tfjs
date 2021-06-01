@@ -43,6 +43,7 @@
     "@tensorflow/tfjs-backend-webgl": "link:../tfjs-backend-webgl",
     "@tensorflow/tfjs-converter": "link:../tfjs-converter",
     "@tensorflow/tfjs-core": "link:../tfjs-core",
+    "@tensorflow/tfjs-layers": "link:../tfjs-layers",
     "@types/jasmine": "~3.0.0",
     "clang-format": "~1.2.4",
     "jasmine": "~3.1.0",

@@ -79,12 +79,20 @@ export function setupTestFilters(
   };
 }
 
-setTestEnvs([{
-  name: 'test-webgpu',
-  backendName: 'webgpu',
-  flags: {'WEBGPU_CPU_FORWARD': false},
-  isDataSync: false,
-}]);
+setTestEnvs([
+  {
+    name: 'test-webgpu',
+    backendName: 'webgpu',
+    flags: {'WEBGPU_CPU_FORWARD': false},
+    isDataSync: false,
+  },
+  {
+    name: 'test-webgl',
+    backendName: 'webgl',
+    flags: {'WEBGL_CPU_FORWARD': false},
+    isDataSync: false,
+  }
+]);
 
 const TEST_FILTERS: TestFilter[] = [
   {
